@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Syncing with Excels...</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .loader-card {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            text-align: center;
+            width: 90%;
+            max-width: 450px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #e9ecef;
+            border-top: 5px solid #28a745; /* Excel Green */
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        h2 { margin: 0 0 10px; color: #333; }
+        p { color: #6c757d; margin-bottom: 25px; font-size: 0.95rem; }
+
+        .progress-wrapper {
+            background: #e9ecef;
+            border-radius: 50px;
+            height: 12px;
+            width: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #28a745, #218838);
+            transition: width 0.25s ease-out; /* Optimized for 8s duration */
+        }
+
+        .percentage {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #28a745;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="loader-card">
+    <div class="spinner"></div>
+    <!-- Maintained Original Names -->
+    <h2>Syncing Excel Data</h2>
+    <p>We're processing your files. This usually takes few seconds. Please don't refresh.</p>
+    
+    <div class="progress-wrapper">
+        <div id="progress-bar"></div>
+    </div>
+    <div class="percentage" id="percent-text">0%</div>
+</div>
+
+<script>
+window.location.href = "{% url 'dashboard_final' %}";
+
+    let progress = 0;
+    const progressBar = document.getElementById('progress-bar');
+    const percentText = document.getElementById('percent-text');
+    
+    const intervalTime = 50; // Update every 50ms
+    
+    function updateProgress() {
+        // Logic to reach ~99% over roughly 8 seconds
+        if (progress < 90) {
+            // Stage 1: Faster (0 to 80%)
+            progress += 2 ; // 1.5% every 50ms = 30% per second 
+        } else if (progress < 99) {
+            // Stage 2: Slower Crawl (80 to 99%)
+            progress += 0.15;
+        }
+
+        // Cap at 99% until the redirect triggers
+        if (progress > 99) progress = 99;
+
+        const rounded = Math.floor(progress);
+        progressBar.style.width = rounded + "%";
+        percentText.innerText = rounded + "%";
+
+        if (progress >= 100) {
+            clearInterval(timer);
+        }
+    }
+
+    // Start the progress simulation
+    const timer = setInterval(updateProgress, intervalTime);
+
+       
+       
+      
+        
+
+</script>
+
+</body>
+</html>

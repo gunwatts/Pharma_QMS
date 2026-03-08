@@ -1,0 +1,26 @@
+{% extends 'qms/base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-lg border-0">
+            <div class="card-header bg-dark text-white text-center py-3">
+                <h3 class="mb-0">Edit Action Plan</h3>
+                <h5 class="mb-0 text-muted">for QMS: {{ action_plan.qms.qms_number }}</h5>
+            </div>
+            <div class="card-body p-4 p-md-5" style="background: linear-gradient(to top, #f2f4f6, #ffffff);">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    {% include 'qms/form_fields.html' %}
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <a href="{% url 'qms_detail' action_plan.qms.pk %}" class="btn btn-secondary me-md-2"><i class="bi bi-x-circle"></i> Cancel</a>
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle-fill"></i> Update Action Plan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

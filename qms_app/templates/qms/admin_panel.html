@@ -1,0 +1,65 @@
+{% extends 'qms/base.html' %}
+{% load qms_extras %} {# <-- This line loads our custom filters #}
+
+{% block content %}
+<h1 class="mb-4">Admin Panel</h1>
+
+<!-- Create User -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3>Create New User</h3>
+    </div>
+    <div class="card-body">
+        <form action="{% url 'admin_panel' %}" method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <p><small>Default password: <strong>User@1234</strong></small></p>
+            <button type="submit" name="create_user" class="btn btn-primary">Create User</button>
+        </form>
+    </div>
+</div>
+
+<!-- User List -->
+<div class="card">
+    <div class="card-header">
+        <h3>Manage Users</h3>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Admin Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td>{{ u.username }}</td>
+                        <td>{{ u.email }}</td>
+                        <td>
+                            {# --- THIS IS THE CORRECTED LINE --- #}
+                            {% if u|in_group:"admin" %}
+                                <span class="badge bg-success">Admin</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Standard User</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form action="{% url 'admin_panel' %}" method="post" class="d-inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="user_id" value="{{ u.id }}">
+                                <button type="submit" name="reset_password" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Are you sure you want to reset the password for {{ u.username }}?');">Reset Password</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

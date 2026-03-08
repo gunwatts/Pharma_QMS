@@ -1,0 +1,98 @@
+{% comment %}
+Reusable Bootstrap 5 form field renderer
+Supports:
+- Floating labels
+- Icons
+- Multiple checkbox layout (3 columns per row)
+{% endcomment %}
+
+{% for field in form %}
+
+    {# ================= MULTIPLE DEPARTMENT CHECKBOX LAYOUT ================= #}
+    {% if field.name == "involved_departments" %}
+
+        <div class="mb-4">
+            <label class="form-label fw-semibold">
+                <i class="bi bi-diagram-3-fill text-info me-2"></i>
+                {{ field.label }}
+            </label>
+
+            <div class="row">
+                {% for checkbox in field %}
+                    <div class="col-md-4 col-sm-6 mb-2">
+                        <div class="form-check">
+                            {{ checkbox.tag }}
+                            <label class="form-check-label" for="{{ checkbox.id_for_label }}">
+                                {{ checkbox.choice_label }}
+                            </label>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+
+            {% for error in field.errors %}
+                <div class="invalid-feedback d-block">
+                    {{ error }}
+                </div>
+            {% endfor %}
+
+            {% if field.help_text %}
+                <small class="form-text text-muted d-block mt-2">
+                    {{ field.help_text }}
+                </small>
+            {% endif %}
+        </div>
+
+    {# ================= NORMAL FIELDS (FLOATING LABEL STYLE) ================= #}
+    {% else %}
+
+        <div class="input-group mb-4 has-validation">
+
+            {# -------- ICON LOGIC -------- #}
+            <span class="input-group-text bg-light">
+                {% if 'number' in field.name %}
+                    <i class="bi bi-hash text-primary"></i>
+                {% elif 'date' in field.name %}
+                    <i class="bi bi-calendar-event text-danger"></i>
+                {% elif field.name == "department" or 'type' in field.name %}
+                    <i class="bi bi-tags-fill text-info"></i>
+                {% elif 'description' in field.name or 'comments' in field.name %}
+                    <i class="bi bi-file-text-fill text-success"></i>
+                {% elif 'background' in field.name %}
+                    <i class="bi bi-info-circle-fill text-secondary"></i>
+                {% elif 'file' in field.name %}
+                    <i class="bi bi-paperclip text-warning"></i>
+                {% elif 'username' in field.name %}
+                    <i class="bi bi-person-fill text-dark"></i>
+                {% elif 'password' in field.name %}
+                    <i class="bi bi-key-fill text-dark"></i>
+                {% elif 'email' in field.name %}
+                    <i class="bi bi-envelope-fill text-dark"></i>
+                {% else %}
+                    <i class="bi bi-pencil-fill text-muted"></i>
+                {% endif %}
+            </span>
+
+            {# -------- FLOATING LABEL -------- #}
+            <div class="form-floating flex-grow-1">
+                {{ field }}
+                {{ field.label_tag }}
+            </div>
+
+            {# -------- VALIDATION -------- #}
+            {% for error in field.errors %}
+                <div class="invalid-feedback d-block">
+                    {{ error }}
+                </div>
+            {% endfor %}
+        </div>
+
+        {% if field.help_text %}
+            <small class="form-text text-muted d-block mt-n3 mb-3">
+                {{ field.help_text }}
+            </small>
+        {% endif %}
+
+    {% endif %}
+
+{% endfor %}

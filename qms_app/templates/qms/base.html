@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QMS App</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    {% load static %}
+    <!-- In <head> of base.html -->
+    <link rel="icon" href="{% static 'icons/favicon.ico' %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'icons/favicon-32x32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'icons/favicon-16x16.png' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'icons/apple-touch-icon.png' %}">
+    <link rel="mask-icon" href="{% static 'icons/safari-pinned-tab.svg' %}" color="#0ea5e9">
+    <link rel="manifest" href="{% static 'icons/site.webmanifest' %}">
+    <meta name="msapplication-TileColor" content="#0ea5e9">
+    <meta name="theme-color" content="#0ea5e9">
+    <style>
+.hover-btn:hover {
+  font-weight: bold;           /* bold text */
+  background-color: #0d6efd;   /* Bootstrap primary blue */
+  color: white !important;     /* make text white */
+  border-radius: 0.375rem;     /* rounded corners like btn */
+  padding: 0.375rem 0.75rem;   /* button-like padding */
+}
+</style>
+</head>
+<body>
+{% load qms_extras %}
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{% url 'dashboard' %}">QMS</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    {% if user.is_authenticated %}
+                        <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'dashboard' %}">Dashboard</a></li>
+                        <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'qms_list' %}">QMS</a></li>
+                        <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'mini_qms_list' %}">Mini QMS</a></li>
+                        <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'closed_list' %}">Closed Items</a></li> {# New #}
+                        <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'notes_list' %}">Notes</a></li>
+                        <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'mini_actions_list' %}">Mini Actions</a></li>
+                        {% if user.is_staff or user|in_group:"admin" %}
+                            <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'upload_qms_from_excel' %}">Upload QMS</a></li>
+                            <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'admin_panel' %}">Admin Panel</a></li>
+                        <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'list_update_requests' %}">Requests</a></li>
+                        <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'qms_report_form' %}">Reports</a></li>
+                        {% else %}
+                        <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'submit_update_request' %}">Update Request</a></li>
+                        {% endif %}
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav">
+                    {% if user.is_authenticated %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                {{ user.username }}
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                                <li><a class="dropdown-item" href="{% url 'password_change' %}">Change Password</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <form action="{% url 'logout' %}" method="post" class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item">Logout</button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <li class="nav-item"><a class="nav-link" href="{% url 'login' %}">Login</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mt-4">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    {# --- NEW: Added Datalabels Plugin CDN AFTER Chart.js --- #}
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

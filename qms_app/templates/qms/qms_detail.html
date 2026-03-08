@@ -1,0 +1,113 @@
+{% extends 'qms/base.html' %}
+{% load qms_extras %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h2 class="mb-0">
+            QMS: {{ qms.qms_number }}
+            <span class="badge bg-{% if qms.status == 'Open' %}success{% else %}secondary{% endif %} ms-2">{{ qms.status }}</span>
+        </h2>
+        {% if qms.pdf_file %}
+        {# --- PREVIEW BUTTON --- #}
+        <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#pdfPreviewModal">
+                <i class="bi bi-file-earmark-pdf"></i> Preview PDF
+        </button>
+        {% endif %}
+        {% if user|in_group:"admin" %}
+        <div>
+            {% if qms.status == 'Open' %}
+            <form action="{% url 'qms_close' qms.pk %}" method="post" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-warning" onclick="return confirm('Are you sure you want to close this QMS and all its actions?')"><i class="bi bi-archive-fill"></i> Close QMS</button>
+            </form>
+            {% endif %}
+            <a href="{% url 'qms_edit' qms.pk %}" class="btn btn-primary"><i class="bi bi-pencil-square"></i> Edit</a>
+            <a href="{% url 'qms_delete' qms.pk %}" class="btn btn-danger"><i class="bi bi-trash"></i> Delete</a>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <p><strong>Description:</strong> {{ qms.description }}</p>
+        <p><strong>Type:</strong> {{ qms.get_type_display }}</p>
+        <p><strong>Department:</strong> {{ qms.get_department_display }}</p>
+        <p><strong>Target Date:</strong> {{ qms.target_date }}</p>
+        <p><strong>Background:</strong> {{ qms.background|default:"N/A" }}</p>
+        <p><strong>Remarks:</strong> {{ qms.remarks|default:"N/A" }}</p>
+        <p><strong>Related departments:</strong> {{ qms.responsibilities|default:"N/A" }}</p>
+    </div>
+</div>
+
+<div class="mt-4">
+    <h3>Action Plans</h3>
+    {% if user|in_group:"admin" and qms.status == 'Open' %}
+    <div class="card my-3">
+        <div class="card-body">
+            <h5 class="card-title">Add New Action Plan</h5>
+            <form action="{% url 'action_plan_create' qms.pk %}" method="post">
+                {% csrf_token %}
+                {{ action_form.as_p }}
+                <button type="submit" class="btn btn-success">Add Action</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Plan</th>
+                    <th>Dept</th>
+                    <th>Status</th>
+                    <th>Target Date</th>
+                    {% if user|in_group:"admin" %}
+                    <th>Actions</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for action in qms.action_plans.all %}
+                <tr>
+                    <td>{{ action.action_plan }}</td>
+                    <td>{{ action.department }}</td>
+                    <td><span class="badge bg-{% if action.status == 'Closed' %}secondary{% else %}info{% endif %}">{{ action.get_status_display }}</span></td>
+                    <td>{{ action.target_date }}</td>
+                    {% if user|in_group:"admin" %}
+                    <td>
+                        <a href="{% url 'action_plan_edit' action.pk %}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil-square"></i></a>
+                        <a href="{% url 'action_plan_delete' action.pk %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% empty %}
+                <tr><td colspan="4">No action plans for this QMS.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+
+{# --- BOOTSTRAP MODAL FOR PDF PREVIEW --- #}
+{% if qms.pdf_file %}
+<div class="modal fade" id="pdfPreviewModal" tabindex="-1" aria-labelledby="pdfPreviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-fullscreen-lg-down">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pdfPreviewModalLabel">PDF Preview: {{ qms.pdf_file.name|cut:"qms_pdfs/" }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0" style="height: 80vh;">
+        <iframe src="{{ qms.pdf_file.url }}" width="100%" height="100%" frameborder="0">
+            This browser does not support PDFs. Please download the PDF to view it: <a href="{{ qms.pdf_file.url }}">Download PDF</a>
+        </iframe>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends 'qms/base.html' %}
+
+{% block content %}
+<h1 class="mb-4">My Mini Actions</h1>
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h3>Create Mini Action</h3>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form.as_p }}
+                    <button type="submit" class="btn btn-primary">Save Action</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <h3>Existing Actions</h3>
+        <ul class="list-group">
+            {% for action in actions %}
+                 <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        {{ action.description }}
+                        <br>
+                        <small class="text-muted">Target: {{ action.target_date|default:"N/A" }}</small>
+                    </div>
+                    <div>
+                        <a href="{% url 'mini_action_edit' action.pk %}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil-square"></i></a>
+                        <a href="{% url 'mini_action_delete' action.pk %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
+                    </div>
+                </li>
+            {% empty %}
+                <li class="list-group-item">No mini actions yet.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Syncing with Excels and Downloading Excel File</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .loader-card {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            text-align: center;
+            width: 90%;
+            max-width: 450px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #e9ecef;
+            border-top: 5px solid #28a745; /* Excel Green */
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        h2 { margin: 0 0 10px; color: #333; }
+        p { color: #6c757d; margin-bottom: 25px; font-size: 0.95rem; }
+
+        .progress-wrapper {
+            background: #e9ecef;
+            border-radius: 50px;
+            height: 12px;
+            width: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #28a745, #218838);
+            transition: width 0.25s ease-out; /* Optimized for 8s duration */
+        }
+
+        .percentage {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #28a745;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="loader-card">
+    <div class="spinner"></div>
+    <!-- Maintained Original Names -->
+    <h2 id="sync-title">Syncing with Excels and Downloading Excel File</h2>
+    <p id="sync-description">We're processing your files. This usually takes few seconds. Please don't refresh.</p>
+    
+    <div class="progress-wrapper">
+        <div id="progress-bar"></div>
+    </div>
+    <div class="percentage" id="percent-text">0%</div>
+</div>
+
+<script>
+document.body.appendChild(Object.assign(document.createElement('form'), {method:'POST', action:"{% url 'export_qms_to_excel' dept %}"})).submit();
+
+const progressBar = document.getElementById('progress-bar');
+const percentText = document.getElementById('percent-text');
+const spinner = document.getElementsByClassName('spinner')[0];
+const intervalTime = 50; // Update every 50ms
+    
+let progress = 0;
+const totalDuration = 4000;   // 8 seconds
+const interval = 50;          // update every 50ms
+const totalSteps = totalDuration / interval;
+const increment = 100 / totalSteps;
+const syncelement = document.getElementById('sync-title');
+const descriptionElement = document.getElementById('sync-description');
+function updateProgress() {
+    if (progress < 100) {
+        progress += increment;
+
+        // slow down near the end
+        if (progress > 85) {
+            progress += increment * 0.2;
+        }
+
+        if (progress > 100) progress = 100;
+
+        const rounded = Math.floor(progress);
+        progressBar.style.width = rounded + "%";
+        percentText.innerText = rounded + "%";
+    }
+
+    if (progress >= 100) {
+        clearInterval(timer);
+
+        // 🔁 Spinner → Tick
+        spinner.classList.remove("spinner");
+        syncelement.innerText = "Download Ready!";
+        descriptionElement.innerText = "Your Excel file is Downloaded.";
+        percentText.innerText = "Completed";
+    }
+}
+
+    // Start the progress simulation
+    const timer = setInterval(updateProgress, intervalTime);
+
+       
+       
+      
+        
+
+</script>
+
+</body>
+</html>

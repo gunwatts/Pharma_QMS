@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Viewer: {{ qms.qms_number }}</title>
+    <style>
+        body, html { 
+            margin: 0; 
+            padding: 0; 
+            height: 100%; 
+            overflow: hidden; 
+        }
+        .pdf-embed { 
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%; 
+            height: 100%; 
+        }
+    </style>
+</head>
+<body>
+    {% if qms.pdf_file %}
+        <embed src="{{ qms.pdf_file.url }}" type="application/pdf" class="pdf-embed"/>
+    {% else %}
+        <p style="text-align: center; padding-top: 20px;">No PDF file associated with this QMS record.</p>
+    {% endif %}
+</body>
+</html>

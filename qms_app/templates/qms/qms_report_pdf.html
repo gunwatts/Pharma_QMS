@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        @page { size: a4 portrait; margin: 0.8cm; }
+        body { font-family: Helvetica, sans-serif; font-size: 8.5pt; color: #222; }
+        
+        /* Minimal & Professional Header */
+        .header-container { border-bottom: 2pt solid #004a99; padding-bottom: 5px; margin-bottom: 10px; }
+        .company-title { font-size: 13pt; font-weight: bold; color: #004a99; }
+        .report-label { float: right; font-size: 9pt; font-weight: bold; color: #555; }
+        .sub-header { font-size: 8pt; color: #666; font-style: italic; }
+
+        /* Section Titles with High Contrast */
+        .section-bar { background: #004a99; color: #ffffff; padding: 4px 10px; font-weight: bold; margin-top: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        /* Table Styling with improved header visibility */
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        th, td { border: 0.5pt solid #444; padding: 4px; }
+        th { background: #e0e0e0; color: #000; font-weight: bold; text-align: left; }
+        .center { text-align: center; }
+        .overdue-val { color: #d9534f; font-weight: bold; }
+
+        /* Grid layout for Section 1 and 2 Charts */
+        .grid-table { border: none; width: 100%; }
+        .grid-table td { border: none; padding: 0; vertical-align: top; text-align: center; }
+
+        /* Section 2 Summary Table Fix (High Contrast Header) */
+        .summary-header th { background-color: #2c3e50 !important; color: #ffffff !important; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <span class="report-label">Generated: {{ today|date:"d M Y" }}</span>
+        <div class="company-title">OPTIMUS PHARMA PRIVATE LIMITED</div>
+        <div class="sub-header">Formulations Division - Pashamylaram | QMS Analytical Summary</div>
+    </div>
+
+    <div style="text-align: center; font-weight: bold; margin-bottom: 5px;">
+        TIMEFRAME: {% if from_date %}{{ from_date|date:"d M Y" }} to {{ to_date|date:"d M Y" }}{% else %}TILL DATE CUMULATIVE{% endif %}
+    </div>
+
+    <!-- SECTION 1 -->
+    <div class="section-bar">Section 1: Initiation Trends & Data Comparison</div>
+    <table class="grid-table">
+        <tr>
+            <td><img src="data:image/png;base64,{{ chart_month }}" width="240"></td>
+            <td><img src="data:image/png;base64,{{ chart_year }}" width="240"></td>
+        </tr>
+    </table>
+
+    <table>
+        <thead>
+            <tr>
+                <th width="40%">QMS Classification Type</th>
+                <th class="center">
+                 {% if from_date %}{{ from_date|date:"d M Y" }} to {{ to_date|date:"d M Y" }}{% else %}Current Month({{ today|date:"F" }}){% endif %}</th>
+                <th class="center">Year to Date ({{ today|date:"Y" }})</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in type_stats %}
+            <tr>
+                <td>{{ item.type }}</td>
+                <td class="center">{{ item.month }}</td>
+                <td class="center"><strong>{{ item.year }}</strong></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- SECTION 2 -->
+    <div class="section-bar">Section 2: Department-wise Compliance & Overdue Analytics</div>
+    <table class="grid-table">
+        <tr>
+            <td width="40%">
+<table style="width: 100%; border-collapse: collapse; margin-top: 15px; border: 0.5pt solid #444;">
+    <thead>
+        <tr style="background-color: #e9ecef;">
+            <th style="border: 0.5pt solid #444; padding: 6px; font-weight: bold; font-size: 8.5pt; color: #000;">Department Code</th>
+            <th style="border: 0.5pt solid #444; padding: 6px; font-weight: bold; font-size: 8.5pt; color: #000; text-align: center;">Overdue Count</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in dept_overdue %}
+        <tr>
+            <td style="border: 0.5pt solid #444; padding: 5px; font-size: 8.5pt;">{{ item.department }}</td>
+            <td style="border: 0.5pt solid #444; padding: 5px; text-align: center; font-size: 8.5pt; color: #d9534f; font-weight: bold;">
+                {{ item.total }}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="2" style="border: 0.5pt solid #444; padding: 10px; text-align: center; color: #666; font-style: italic;">
+                No Overdue Items Found
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+            </td>
+            <td width="60%">
+                <img src="data:image/png;base64,{{ chart_pie }}" width="240">
+            </td>
+        </tr>
+    </table>
+
+    <table style="margin-top: 10px;">
+        <tr class="summary-header">
+            <th>Under CFT Review</th>
+            <th>Effectiveness Monitoring</th>
+            <th>Due in 7 Days</th>
+            <th>Total Overdue</th>
+        </tr>
+        <tr>
+            <td class="center">{{ compliance.cft }}</td>
+            <td class="center">{{ compliance.em }}</td>
+            <td class="center" style="background:#fff3cd;">{{ compliance.due_soon }}</td>
+            <td class="center overdue-val" style="background:#f8d7da;">{{ compliance.total_overdue }}</td>
+        </tr>
+    </table>
+
+    <!-- REMAINING SECTIONS UNCHANGED -->
+    <div class="section-bar" style="margin-top: 100px;">Section 3: Previous Years Open Matrix (by Dept)</div>
+    {% if prev_matrix %}
+    <table>
+        <thead>
+            <tr>
+                <th width="10%">Type</th>
+                {% for d in active_depts %}<th>{{ d }}</th>{% endfor %}
+                <th width="10%">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in prev_matrix %}
+            <tr>
+                <td><strong>{{ row.type }}</strong></td>
+                {% for cnt in row.depts %}<td class="center">{{ cnt }}</td>{% endfor %}
+                <td class="center"><strong>{{ row.total }}</strong></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<p>Nil previous year open records.</p>{% endif %}
+
+    <div class="section-bar">Section 4: Open Records from Previous Years (Excl. PC)</div>
+    {% if main_open_prev %}
+    <table>
+        <thead>
+            <tr><th>S.No</th><th>Initiated Date</th><th>QMS No.</th><th>Target Date</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+            {% for q in main_open_prev %}
+            <tr>
+                <td class="center">{{ forloop.counter }}</td>
+                <td class="center">{{ q.initiated_date|date:"d M Y" }}</td>
+                <td>{{ q.qms_number }}</td>
+                <td class="center overdue-val">{{ q.target_date|date:"d M Y" }}</td>
+                <td>{% if q.status == 'CFT' %}Under CFT Review{% elif q.status == 'EM' %}Eff. Monitoring{% else %}{{ q.status }}{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<p>Nil major records found.</p>{% endif %}
+
+    <div class="section-bar">Section 5: Detailed Overdue List by Department</div>
+    {% if overdue_tables %}
+        {% for table in overdue_tables %}
+        <div style="font-weight:bold; margin-top:8px; color:#004a99; border-bottom: 0.5pt solid #004a99; padding-bottom: 2px;">{{ table.name }}</div>
+        <table>
+            <thead>
+                <tr><th width="30">S.No</th><th width="100">QMS No</th><th>Description</th><th width="80">Target Date</th></tr>
+            </thead>
+            <tbody>
+                {% for item in table.items %}
+                <tr>
+                    <td class="center">{{ forloop.counter }}</td>
+                    <td>{{ item.qms_number }}</td>
+                    <td style="font-size: 7.5pt;">{{ item.description|truncatechars:150 }}</td>
+                    <td class="center overdue-val">{{ item.target_date|date:"d M Y" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endfor %}
+    {% else %}<p>Nil overdue records.</p>{% endif %}
+
+    <div style="margin-top: 15px; text-align: center; font-size: 7pt; color: #888;">
+        Page <pdf:pagenumber> of <pdf:pagecount> | QMS Management System
+    </div>
+</body>
+</html>

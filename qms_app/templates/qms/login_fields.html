@@ -1,0 +1,32 @@
+{% comment %}
+This template snippet is ONLY for the login page.
+It renders fields with a clear "stacked" label (label above the input)
+and keeps the interactive icons.
+{% endcomment %}
+
+{% for field in form %}
+<div class="mb-3">
+    {# --- The label is now clearly placed above the input group --- #}
+    {{ field.label_tag }}
+    <div class="input-group has-validation">
+        {# --- Icon Logic: Same as before --- #}
+        <span class="input-group-text bg-light">
+            {% if 'username' in field.name %}
+                <i class="bi bi-person-fill text-dark"></i>
+            {% elif 'password' in field.name %}
+                <i class="bi bi-key-fill text-dark"></i>
+            {% else %}
+                <i class="bi bi-pencil-fill text-muted"></i>
+            {% endif %}
+        </span>
+        
+        {# --- The input field itself, now without the floating label wrapper --- #}
+        {{ field }}
+    </div>
+    {% for error in field.errors %}
+        <div class="invalid-feedback d-block mt-1">
+            {{ error }}
+        </div>
+    {% endfor %}
+</div>
+{% endfor %}
