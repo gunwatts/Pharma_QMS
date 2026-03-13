@@ -5,6 +5,7 @@ from pathlib import Path
 import logging
 import re
 from django.conf import settings
+from qms_app.models import ActionPlan
 from .extenions_code import bulk_create_qms
 # --- Configuration (These will be overridden by Django settings when called from views.py) ---
 _DEFAULT_QMS_LOGS_DIR = r'Z:\2025 QMS Logs'  # Default directory for QMS Excel files
@@ -275,10 +276,19 @@ def auto_sync_qms_from_excel_core(
 
                     if to_create:
                         bulk_create_qms(to_create)
+                    
+                    closed_ids = []
+                    for obj in to_update:
+                        if obj.status == "Closed":
+                            closed_ids.append(obj.id)
+                    
                     if to_update:
                         qms_model.objects.bulk_update(to_update, 
                             ['initiated_date', 'description', 'type', 'target_date', 'department', 'background', 'status'], 
                             batch_size=500)
+                    # update related action plans
+                    if closed_ids:
+                        ActionPlan.objects.filter(qms_id__in=closed_ids).update(status="Closed")
 
                     total_created_count += len(to_create)
                     total_updated_count += len(to_update)
