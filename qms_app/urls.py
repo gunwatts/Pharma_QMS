@@ -20,6 +20,7 @@ urlpatterns = [
     path('qms/new/', views.qms_create, name='qms_create'),
     path('qms/<int:pk>/', views.qms_detail, name='qms_detail'),
     path('qms/<int:pk>/edit/', views.qms_edit, name='qms_edit'),
+    path('qms/update-inline/<int:pk>/', views.qms_update_inline, name='qms_update_inline'),
     path('qms/<int:pk>/delete/', views.qms_delete, name='qms_delete'),
     path('qms/<int:pk>/close/', views.qms_close, name='qms_close'), # New
     path('qms/<int:pk>/pdf/', views.qms_pdf_view, name='qms_pdf_view'),

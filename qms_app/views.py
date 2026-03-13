@@ -30,7 +30,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from .serializers import QMSSerializer, ActionPlanSerializer, DepartmentSerializer
-
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 # --- Dashboard View (Updated for Chart & Layout) ---
 
 @login_required
@@ -158,7 +159,10 @@ def dashboard_final(request):
 # --- QMS CRUD Views (Updated list view) ---
 @login_required
 def qms_list(request):
-    qms_list_data = QMS.objects.exclude(status='Closed')
+    import datetime
+    today = datetime.date.today()
+    soon_date = today + datetime.timedelta(days=7)
+    qms_list_data = QMS.objects.filter(status__in=['Open', 'CFT','EM']).order_by('target_date')
 
     # Get all department choices for the dropdown
     # We use QMS.DEPARTMENT_CHOICES directly to ensure all possible options are listed.
@@ -191,6 +195,9 @@ def qms_list(request):
         'qms_list': qms_list_data,
         'qms_departments': qms_departments, # Pass all department choices for dropdown
         'qms_data_json': qms_data_json,     # Pass chart data as JSON
+        'today': today,
+        'soon_date': soon_date,
+        
     }
     return render(request, 'qms/qms_list.html', context)
 # --- Mini QMS CRUD Views (Updated list view) ---
@@ -950,3 +957,18 @@ def qms_involved_departments_api(request):
             })
 
     return Response(result)
+
+#to edit on open list page
+@require_POST
+def qms_update_inline(request, pk):
+    qms = QMS.objects.get(pk=pk)
+    field = request.POST.get('field')
+    value = request.POST.get('value')
+    
+    if field == 'remarks':
+        qms.remarks = value
+    elif field == 'review_on':
+        qms.review_on = value if value else None
+        
+    qms.save()
+    return JsonResponse({'status': 'success'})

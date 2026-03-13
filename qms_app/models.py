@@ -38,6 +38,7 @@ class QMS(models.Model):
     pdf_file = models.FileField(upload_to='qms_pdfs/', null=True, blank=True, verbose_name="Attach PDF")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Open') # Added
     remarks = models.TextField(blank=True)
+    review_on = models.DateField(null=True, blank=True)
     # NEW FIELD – multiple departments
     involved_departments = models.ManyToManyField(
         Department,

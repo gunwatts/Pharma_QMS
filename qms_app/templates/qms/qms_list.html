@@ -1,124 +1,298 @@
 {% extends 'qms/base.html' %}
 {% load qms_extras %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<style>
+    /* 1. GLOBAL TYPOGRAPHY */
+    body, table, textarea, select, input, button {
+        font-family: "Times New Roman", Times, serif !important;
+        font-size: 15px;
+    }
+
+    /* 2. FILTER & ACTION BAR */
+    .filter-section {
+        background-color: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+
+    
+    .status-btn { 
+        color: white !important; border: none; padding: 8px 18px; 
+        font-weight: bold; border-radius: 4px; opacity: 0.6; transition: 0.3s;
+    }
+    .btn-open { background-color: #0d6efd !important; }
+    .btn-em { background-color: #6610f2 !important; }
+    .btn-cft { background-color: #20c997 !important; }
+    .status-btn.active { opacity: 1; box-shadow: 0 0 0 3px rgba(0,0,0,0.1); transform: scale(1.02); }
+
+    /* 3. TABLE STYLING */
+    #qmsTable { border-collapse: separate; width: 100% !important; }
+    #qmsTable thead th {
+        background-color: #212529; color: white;
+        padding: 12px; border: 1px solid #333; text-transform: uppercase; font-size: 13px;
+    }
+    
+    #qmsTable tbody td { vertical-align: top; padding: 0 !important; border: 1px solid #dee2e6; }
+    .cell-padding { padding: 10px; }
+
+    /* 4. MULTI-LINE REMARKS (Full Row Height) */
+    .remarks-container { height: 100%; display: flex; flex-direction: column; }
+    .remarks-area {
+        flex-grow: 1; width: 100%; min-height: 80px; /* Ensures row starts substantial */
+        border: none; background: transparent; padding: 10px;
+        resize: none; overflow: hidden; line-height: 1.4;
+    }
+    .remarks-area:focus { background: #fff; outline: 2px solid #0d6efd; overflow-y: auto; }
+
+    /* 5. OVERDUE & HOVER LOGIC */
+    .overdue-text { color: #d00000 !important; font-weight: bold; }
+    .overdue-text::before { content: "⚠️ "; }
+    tr:hover td { background-color: #f8faff !important; }
+    tr:hover .remarks-area { background-color: #f8faff; }
+
+    /* 6. COMPACT SEARCH INPUTS */
+    .col-search { padding: 4px; font-size: 12px; width: 100%; border: 1px solid #ccc; border-radius: 3px; }
+
+    /* Near Review Button Style */
+.btn-review { background-color: #ffc107 !important; color: #000 !important; }
+.btn-review.active { opacity: 1; box-shadow: 0 0 0 3px rgba(255,193,7,0.3); }
+
+/* Update your blinking logic to include the review button */
+@keyframes statusPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.03); } }
+.btn-em:not(.active), .btn-cft:not(.active), .btn-review:not(.active) { 
+    animation: statusPulse 2s infinite ease-in-out; 
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>QMS List</h1>
-    {% if user|in_group:"admin" %}
-    <a href="{% url 'qms_create' %}" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Create New QMS</a>
-    {% endif %}
-</div>
-<form method="get" class="mb-3">
-    <div class="input-group">
-        <input type="text" name="q" class="form-control" id="searchInput" onkeyup="filterTable()" placeholder="Search all or use fiters qms: pc & sta: cft & dep: produ & des: cabergoline" value="{{ request.GET.q }}">
+<div class="container-fluid py-3">
+    
+    <!-- MASTER FILTER SECTION -->
+    <div class="filter-section mb-4">
+        <div class="row align-items-center g-3">
+            <!-- Global Search -->
+            <div class="col-md-3">
+                <label class="small fw-bold text-muted uppercase">Global Search</label>
+                <input type="text" id="globalSearch" class="form-control" placeholder="Search anything...">
+            </div>
+
+            <!-- Department Filter -->
+            <div class="col-md-3">
+                <label class="small fw-bold text-muted uppercase">Department</label>
+                <select id="deptFilter" class="form-select fw-bold">
+                    <option value="">ALL DEPARTMENTS</option>
+                    <option value="QA">Quality Assurance (QA)</option>
+                    <option value="QC">Quality Control (QC)</option>
+                    <option value="PD">Production (PD)</option>
+                    <option value="TT">Technology Transfer (TT)</option>
+                    <option value="PM">Project Management (PM)</option>
+                    <option value="HR">Human Resources (HR)</option>
+                    <option value="SH">Safety, Health and Env (SH)</option>
+                    <option value="FD">Formulations R&D (FD)</option>
+                    <option value="AM">Administration (AM)</option>
+                    <option value="FN">Finance (FN)</option>
+                    <option value="BD">Business Development (BD)</option>
+                    <option value="EN">Engineering (EN)</option>
+                    <option value="WH">Warehouse (WH)</option>
+                    <option value="PK">Packaging Dev (PK)</option>
+                    <option value="RA">Regulatory Affairs (RA)</option>
+                    <option value="IT">IT (IT)</option>
+                    <option value="SC">Supply Chain (SC)</option>
+                    <option value="DA">Dev Quality Assurance (DA)</option>
+                    <option value="AD">Analytical R&D (AD)</option>
+                    <option value="IP">Intellectual Property (IP)</option>
+                    <option value="MK">Marketing (MK)</option>
+                    <option value="PP">Production Planning (PP)</option>
+                </select>
+            </div>
+
+            <!-- Status Toggles -->
+            <div class="col-md-4 text-center">
+                <label class="small fw-bold d-block text-muted mb-1">STATUS TRACKING</label>
+                <div class="btn-group shadow-sm">
+                    <button class="status-btn btn-open active" data-status="Open">OPEN</button>
+                    <button class="status-btn btn-em" data-status="EM">EM</button>
+                    <button class="status-btn btn-cft" data-status="CFT">CFT</button>
+                    <button class="status-btn btn-review" data-status="Review">NEAR REVIEW</button>
+                </div>
+            </div>
+
+            <div class="col-md-2 text-end">
+                {% if user|in_group:"admin" %}
+                <a href="{% url 'qms_create' %}" class="btn btn-dark w-100 fw-bold">NEW QMS</a>
+                {% endif %}
+            </div>
+        </div>
     </div>
-</form>
-<div class="table-responsive">
-    <table id="myTable" class="table table-striped table-hover">
-        <thead>
-            <tr> 
-                <th>QMS Number</th>
-                <th>Description</th>
-                <th>Background</th>
-                <th>Remarks</th>
-                <th>Dept</th>
-                <th>Target Date</th>
-                <th>Status</th>
-                {% if user|in_group:"admin" %}
-                <th>Actions</th>
-                {% endif %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for qms in qms_list %}
-            <tr>
-                <td><a href="{% url 'qms_detail' qms.pk %}">{{ qms.qms_number }}</a></td>
-                <td>{{ qms.description }}</td>
-                <td>{{ qms.background }}</td>
-                <td>{{ qms.remarks }}</td>
-                <td>{{ qms.department }}</td>
-                <td>{{ qms.target_date }}</td>
-                <td>{{ qms.get_status_display }}</td>
-                {% if user|in_group:"admin" %}
-                <td>
-                    <a href="{% url 'qms_edit' qms.pk %}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil-square"></i></a>
-                    <a href="{% url 'qms_delete' qms.pk %}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a>
-                </td>
-                {% endif %}
-            </tr>
-            {% empty %}
-            <tr><td colspan="6">No QMS records found.</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+
+    <!-- TABLE AREA -->
+    <div class="bg-white shadow-sm border rounded">
+        <table id="qmsTable" class="table m-0">
+            <thead>
+                <tr>
+                    <th width="8%">QMS No.</th>
+                    <th width="20%">Description</th>
+                    <th width="20%">Background</th>
+                    <th width="25%">Remarks (Multi-line)</th>
+                    <th width="12%">Target Date</th>
+                    <th width="12%">Review On</th>
+                    <th style="display:none;">DeptHidden</th> <!-- Index 6 -->
+                    <th style="display:none;">StatusHidden</th> <!-- Index 7 -->
+                    <th style="display:none;">SortOrder</th> <!-- Index 8 -->
+                    <th style="display:none;">NearReviewHidden</th> <!-- Index 9 -->
+                </tr>
+                <tr class="bg-light">
+                    <th><input type="text" class="col-search" placeholder="No."></th>
+                    <th><input type="text" class="col-search" placeholder="Desc."></th>
+                    <th><input type="text" class="col-search" placeholder="Bg."></th>
+                    <th><input type="text" class="col-search" placeholder="Remarks"></th>
+                    <th><input type="text" class="col-search" placeholder="Target"></th>
+                    <th><input type="text" class="col-search" placeholder="Review"></th>
+                    <th style="display:none;"></th>
+                    <th style="display:none;"></th>
+                    <th style="display:none;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for qms in qms_list %}
+                <tr data-id="{{ qms.pk }}">
+                    <td class="text-center fw-bold"><div class="cell-padding"><a href="{% url 'qms_detail' qms.pk %}">{{ qms.qms_number }}</a></div></td>
+                    <td><div class="cell-padding">{{ qms.description }}</div></td>
+                    <td><div class="cell-padding">{{ qms.background }}</div></td>
+                    <td>
+                        <div class="remarks-container">
+                            <textarea class="remarks-area ajax-save" data-field="remarks">{{ qms.remarks|default:'' }}</textarea>
+                        </div>
+                    </td>
+                    <td data-order="{{ qms.target_date|date:'Y-m-d' }}" class="text-center">
+                        <div class="cell-padding">
+                            {% if "Open" in qms.get_status_display %}
+                                <span class="date-val {% if qms.target_date < today %}overdue-text{% endif %}" data-date="{{ qms.target_date|date:'Y-m-d' }}">
+                                    {{ qms.target_date|date:"d M Y"|upper }}
+                                </span>
+                            {% else %}<span class="text-muted small">N/A</span>{% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="cell-padding">
+                            <input type="date" class="form-control form-control-sm border-0 ajax-save" 
+                                   data-field="review_on" value="{{ qms.review_on|date:'Y-m-d' }}">
+                        </div>
+                    </td>
+                    <td style="display:none;">{{ qms.department }}</td>
+                    <td style="display:none;">{{ qms.get_status_display }}</td>
+                    <td style="display:none;">
+                        {% if qms.target_date < today and "Open" in qms.get_status_display %}1
+                        {% elif qms.target_date <= soon_date and "Open" in qms.get_status_display %}2
+                        {% else %}3{% endif %}
+                    </td>
+                    <td style="display:none;">
+                    {% if qms.review_on and qms.review_on <= soon_date %}YES{% else %}NO{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
-function filterTable() {
-  const input = document.getElementById("searchInput");
-  const filter = input.value.toLowerCase().trim();
-  const table = document.getElementById("myTable");
-  const tr = table.getElementsByTagName("tr");
-  const headers = table.getElementsByTagName("th");
-
-  // Split by "&" for multiple filters
-  const filterParts = filter.split("&").map(f => f.trim()).filter(f => f !== "");
-
-  // Parse filters (supports both column:value and plain text)
-  const filters = filterParts.map(part => {
-    if (part.includes(":")) {
-      const [col, ...valParts] = part.split(":");
-      return { column: col.trim(), value: valParts.join(":").trim() };
-    } else {
-      return { column: null, value: part };
-    }
-  });
-
-  // Loop through rows (skip header)
-  for (let i = 1; i < tr.length; i++) {
-    const tds = tr[i].getElementsByTagName("td");
-    let rowMatch = true;
-
-    for (const f of filters) {
-      let matched = false;
-
-      if (f.column) {
-        // Find header by partial match
-        let colIndex = -1;
-        for (let h = 0; h < headers.length; h++) {
-          const headerText = headers[h].textContent.toLowerCase().trim();
-          if (headerText.startsWith(f.column)) {
-            colIndex = h;
-            break;
-          }
+$(document).ready(function() {
+    // 1. Initialize Table
+    var table = $('#qmsTable').DataTable({
+        "pageLength": 25,
+        "dom": 'rtip',
+        "order": [[8, 'asc'], [4, 'asc']], 
+        "columnDefs": [{ 
+            "targets": [6, 7, 8, 9], // FIX: Added 9 here to keep it hidden
+            "visible": false 
+        }],
+        "autoWidth": false,
+        "drawCallback": function() {
+            $('.remarks-area').each(function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            });
         }
+    });
 
-        // Match specific column
-        if (colIndex !== -1) {
-          const cell = tds[colIndex];
-          if (cell && cell.textContent.toLowerCase().includes(f.value)) {
-            matched = true;
-          }
+    // 2. Global Search
+    $('#globalSearch').on('keyup', function() {
+        table.search(this.value).draw();
+    });
+
+    // 3. Department Filter
+    $('#deptFilter').on('change', function() {
+        table.column(6).search(this.value).draw();
+    });
+
+    // 4. Status Buttons
+    $('.status-btn').on('click', function() {
+        var mode = $(this).data('status');
+        $('.status-btn').removeClass('active');
+        $(this).addClass('active');
+
+        if (mode === 'Review') {
+            // FIX: Clear status search and apply Review search
+            table.column(7).search('').column(9).search('YES').draw();
+        } else {
+            // FIX: Clear review search and apply Status search
+            table.column(9).search('').column(7).search(mode).draw();
         }
-      } else {
-        // No column given → search in all columns
-        for (let j = 0; j < tds.length; j++) {
-          if (tds[j] && tds[j].textContent.toLowerCase().includes(f.value)) {
-            matched = true;
-            break;
-          }
-        }
-      }
+    });
 
-      // If one filter fails, skip the row
-      if (!matched) {
-        rowMatch = false;
-        break;
-      }
-    }
+    // Default view: Open
+    table.column(7).search('Open').draw();
 
-    tr[i].style.display = rowMatch ? "" : "none";
-  }
-}
+    // 5. Column-Specific Search
+    $('.col-search').on('keyup', function() {
+        var idx = $(this).parent().index();
+        table.column(idx).search(this.value).draw();
+    });
+
+    // 6. Multi-line Textarea Auto-expand
+    $(document).on('input', '.remarks-area', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    });
+
+    // 7. AJAX Inline Save
+    $('.ajax-save').on('change', function() {
+        var $el = $(this);
+        var rowId = $el.closest('tr').data('id');
+        var field = $el.data('field');
+        var val = $el.val();
+
+        $el.css('background-color', '#fff3cd');
+        $.ajax({
+            url: `/qms/update-inline/${rowId}/`,
+            method: 'POST',
+            data: { 
+                'field': field, 
+                'value': val, 
+                'csrfmiddlewaretoken': '{{ csrf_token }}' 
+            },
+            success: function() {
+                $el.css('background-color', '#d1e7dd');
+                setTimeout(() => { $el.css('background-color', 'transparent'); }, 1000);
+            },
+            error: function() { 
+                $el.css('background-color', '#f8d7da');
+                alert('Update Failed'); 
+            }
+        });
+    });
+});
 </script>
 {% endblock %}
