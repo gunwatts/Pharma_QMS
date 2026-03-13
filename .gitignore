@@ -22,3 +22,8 @@ Thumbs.db
 #files
 files/
 certs/
+
+#files
+*.pem
+*.sqlite3
+qms_last_sync_date.txt
