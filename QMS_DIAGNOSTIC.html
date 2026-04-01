@@ -1,0 +1,131 @@
+<!-- 
+    DIAGNOSTIC: Test this file by visiting /qms/qms/ and opening browser console (F12)
+    Then copy this diagnostic code into the console to test the API
+-->
+
+<!--
+STEP 1: Test API Endpoint
+=============================
+Paste this in your browser console (F12):
+
+fetch('/api/qms/')
+  .then(r => {
+    console.log('Status:', r.status);
+    console.log('OK:', r.ok);
+    return r.json();
+  })
+  .then(data => {
+    console.log('Data received:', data.length, 'records');
+    console.log('First record:', data[0]);
+    if (data.length === 0) {
+      console.warn('⚠️ API returned empty array! Check your Django filtersfh');
+    } else {
+      console.log('✓ API is working!');
+    }
+  })
+  .catch(err => {
+    console.error('❌ API Failed:', err);
+  });
+
+STEP 2: Check QMS_CONFIG
+=============================
+Paste this:
+
+console.log('QMS_CONFIG:', window.QMS_CONFIG);
+
+STEP 3: Manually Initialize Filter
+=============================
+If API works, try this:
+
+const qmsFilter = new QMSCrossFilter();
+await qmsFilter.init();
+
+-->
+
+<script>
+// CONVENIENCE SCRIPT: Paste into browser console to diagnose issues
+
+window.QMS_DIAGNOSTIC = {
+    // Test API endpoint
+    testAPI: async function() {
+        console.group('[DIAGNOSTIC] Testing API Endpoint');
+        try {
+            const url = '/api/qms/';
+            console.log('Testing URL:', url);
+            
+            const response = await fetch(url);
+            console.log('Status:', response.status, response.statusText);
+            
+            if (!response.ok) {
+                console.error('❌ API returned error:', response.status);
+                const text = await response.text();
+                console.error('Response body:', text);
+                return;
+            }
+            
+            const data = await response.json();
+            console.log('✓ API Success!');
+            console.log('Records received:', data.length);
+            
+            if (data.length > 0) {
+                console.log('First record:', data[0]);
+                console.table(data.slice(0, 5).map(d => ({
+                    qms_number: d.qms_number,
+                    department: d.department,
+                    status: d.status,
+                    type: d.type
+                })));
+            } else {
+                console.warn('⚠️ API returned 0 records!');
+                console.warn('Check Django view: is it filtering correctly?');
+            }
+        } catch (error) {
+            console.error('❌ Test failed:', error);
+        }
+        console.groupEnd();
+    },
+    
+    // Test configuration
+    testConfig: function() {
+        console.group('[DIAGNOSTIC] Testing QMS_CONFIG');
+        console.log('window.QMS_CONFIG:', window.QMS_CONFIG);
+        
+        if (!window.QMS_CONFIG) {
+            console.error('❌ window.QMS_CONFIG not defined!');
+            return;
+        }
+        
+        console.log('apiUrl:', window.QMS_CONFIG.apiUrl);
+        console.log('csrfToken:', window.QMS_CONFIG.csrfToken ? '✓ Present' : '❌ Missing');
+        
+        try {
+            const testPk = 1;
+            const updateUrl = window.QMS_CONFIG.updateInlineUrl(testPk);
+            const detailUrl = window.QMS_CONFIG.detailUrl(testPk);
+            console.log('updateInlineUrl(1):', updateUrl);
+            console.log('detailUrl(1):', detailUrl);
+            console.log('✓ URLs generated successfully');
+        } catch (err) {
+            console.error('❌ Error generating URLs:', err);
+        }
+        console.groupEnd();
+    },
+    
+    // Full diagnostic
+    runAll: async function() {
+        console.log('═══════════════════════════════════════════');
+        console.log('    QMS CROSS-FILTER DIAGNOSTIC');
+        console.log('═══════════════════════════════════════════');
+        
+        this.testConfig();
+        await this.testAPI();
+        
+        console.log('═══════════════════════════════════════════');
+        console.log('Diagnostic complete. Check results above.');
+        console.log('═══════════════════════════════════════════');
+    }
+};
+
+// Run diagnostic (optional - can be called manually from console)
+console.log('[DIAGNOSTIC] Available. Run: QMS_DIAGNOSTIC.runAll()');
+</script>

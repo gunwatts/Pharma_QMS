@@ -4,6 +4,7 @@ from .models import QMS, ActionPlan, Department
 
 class QMSSerializer(serializers.ModelSerializer):
     responsibilities = serializers.SerializerMethodField()
+    involved_dept_codes = serializers.SerializerMethodField()
 
     class Meta:
         model = QMS
@@ -14,13 +15,19 @@ class QMSSerializer(serializers.ModelSerializer):
             'description',
             'type',
             'target_date',
+            'review_on',
             'department',
             'background',
             'status',
             'remarks',
             'location',
             'responsibilities',
+            'involved_dept_codes',
         ]
+
+    def get_involved_dept_codes(self, obj):
+        codes = obj.involved_departments.values_list('code', flat=True)
+        return list(codes)
 
     def get_responsibilities(self, obj):
         return obj.responsibilities()

@@ -915,7 +915,8 @@ def export_department_qms_to_excel(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def qms_api(request):
-    qs = QMS.objects.all()
+    # Return only Open/CFT/EM status QMS for dashboard filtering
+    qs = QMS.objects.filter(status__in=['Open', 'CFT', 'EM']).order_by('target_date')
     return Response(QMSSerializer(qs, many=True).data)
 
 

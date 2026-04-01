@@ -32,7 +32,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'files'
 
-ALLOWED_HOSTS = ['10.4.100.240', '127.0.0.1',"ITS151"]
+ALLOWED_HOSTS = ['10.4.100.240', '127.0.0.1',"ITS151","localhost"]
 
 
 # Application definition
