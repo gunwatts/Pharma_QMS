@@ -79,6 +79,36 @@
         color: #333;
         margin-bottom: 6px;
         font-size: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    /* Drill Controls for Target Date Chart */
+    .drill-controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .drill-controls .btn-sm {
+        padding: 4px 10px;
+        font-size: 11px;
+        border-radius: 3px;
+        transition: all 0.2s ease;
+        font-weight: 500;
+    }
+
+    .drill-controls .btn-outline-secondary:hover {
+        background-color: #6c757d;
+        color: white;
+        transform: scale(1.05);
+    }
+
+    .drill-controls .btn-outline-primary:hover {
+        background-color: #0d6efd;
+        color: white;
+        transform: scale(1.05);
     }
 
     /* 4. RESET FILTERS BUTTON */
@@ -254,7 +284,16 @@
                 <canvas id="chartByTimeline"></canvas>
             </div>
             <div class="chart-container">
-                <div class="chart-title">QMS Target Dates</div>
+                <div class="chart-title">QMS Target Dates
+                    <div class="drill-controls" id="targetDateDrillControls" style="display: inline-block; margin-left: 15px;">
+                        <button id="drillUpBtn" class="btn btn-sm btn-outline-secondary" style="display: none; margin-right: 5px;" title="Go back to Years view (Ctrl+Click)">
+                            <i class="fas fa-arrow-up"></i> Years
+                        </button>
+                        <button id="drillDownBtn" class="btn btn-sm btn-outline-primary" style="display: none;" title="Drill down to Months (Click bar)">
+                            <i class="fas fa-arrow-down"></i> Months
+                        </button>
+                    </div>
+                </div>
                 <canvas id="chartByTargetDate"></canvas>
             </div>
             <div class="chart-container">

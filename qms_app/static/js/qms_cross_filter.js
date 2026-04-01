@@ -53,7 +53,11 @@ class QMSCrossFilter {
             targetDateChart: document.getElementById('chartByTargetDate'),
             involvedDeptChart: document.getElementById('chartByInvolvedDept'),
             table: document.getElementById('qmsTable'),
-            resetBtn: document.getElementById('resetFilters')
+            resetBtn: document.getElementById('resetFilters'),
+            // Drill controls for Target Date chart
+            drillUpBtn: document.getElementById('drillUpBtn'),
+            drillDownBtn: document.getElementById('drillDownBtn'),
+            targetDateDrillControls: document.getElementById('targetDateDrillControls')
         };
         
         // ===== DEBOUNCE & CHART UPDATE CONTROL =====
@@ -105,6 +109,9 @@ class QMSCrossFilter {
             console.log('[QMS Cross-Filter] Rendering charts...');
             this.renderCharts();
             console.log('[QMS Cross-Filter] ✓ Charts rendered');
+            
+            // Update target date drill button visibility
+            this.updateTargetDateDrillButtons();
             
             // Update table
             console.log('[QMS Cross-Filter] Updating table...');
@@ -161,20 +168,34 @@ class QMSCrossFilter {
     bindEvents() {
         // ===== KEYBOARD STATE TRACKING (for Shift+Click detection) =====
         document.addEventListener('keydown', (e) => {
+            const previousState = { ...this.keyboardState };
             if (e.shiftKey) this.keyboardState.shiftPressed = true;
             if (e.ctrlKey || e.metaKey) this.keyboardState.ctrlPressed = true;
-            console.log('[Keyboard] Key pressed - Shift: ' + this.keyboardState.shiftPressed + ', Ctrl: ' + this.keyboardState.ctrlPressed);
+            console.log('[DEBUG-Keyboard] keydown event - key:', e.code, '- Shift:', this.keyboardState.shiftPressed, ', Ctrl:', this.keyboardState.ctrlPressed);
+            if (JSON.stringify(previousState) !== JSON.stringify(this.keyboardState)) {
+                console.log('[DEBUG-Keyboard] ✓ KEY STATE CHANGED TO:', this.keyboardState);
+            }
         });
         
         document.addEventListener('keyup', (e) => {
+            const previousState = { ...this.keyboardState };
             this.keyboardState.shiftPressed = false;
             this.keyboardState.ctrlPressed = false;
-            console.log('[Keyboard] All keys released');
+            console.log('[DEBUG-Keyboard] keyup event - key:', e.code, '- ALL KEYS RELEASED');
+            console.log('[DEBUG-Keyboard] State before:', previousState, '- After:', this.keyboardState);
         });
         
         // Reset button
         if (this.elements.resetBtn) {
             this.elements.resetBtn.addEventListener('click', () => this.resetFilters());
+        }
+        
+        // Target Date drill controls
+        if (this.elements.drillUpBtn) {
+            this.elements.drillUpBtn.addEventListener('click', () => this.drillUpTargetDate());
+        }
+        if (this.elements.drillDownBtn) {
+            this.elements.drillDownBtn.addEventListener('click', () => this.drillDownTargetDate());
         }
         
         // Existing filter UI controls (status buttons, dept filter, etc.)
@@ -212,6 +233,10 @@ class QMSCrossFilter {
      * ===== FILTER APPLICATION =====
      */
     applyFilters() {
+        console.log('[DEBUG-Filter] === applyFilters START ===');
+        console.log('[DEBUG-Filter] Active filters:', this.activeFilters);
+        
+        // Apply ALL filters to get the base filtered data
         this.filteredData = this.allData.filter(item => {
             const deptMatch = 
                 this.activeFilters.department.length === 0 || 
@@ -232,7 +257,54 @@ class QMSCrossFilter {
             return deptMatch && statusMatch && typeMatch && ageMatch && targetDateMatch && involvedDeptMatch;
         });
         
-        console.log(`[QMS Cross-Filter] Applied filters: ${this.filteredData.length} records match`);
+        console.log(`[DEBUG-Filter] RESULT: ${this.filteredData.length} records match from ${this.allData.length} total`);
+        console.log('[DEBUG-Filter] === applyFilters COMPLETE ===');
+    }
+
+    /**
+     * Get filtered data WITH a specific dimension excluded (for cross-filtering aggregations)
+     * This allows charts to show all categories with counts from other filter dimensions
+     */
+    getFilteredDataWithoutDimension(excludeDimension) {
+        return this.allData.filter(item => {
+            // Apply all filters EXCEPT the excluded dimension
+            
+            if (excludeDimension !== 'department') {
+                const deptMatch = 
+                    this.activeFilters.department.length === 0 || 
+                    this.activeFilters.department.includes(item.department);
+                if (!deptMatch) return false;
+            }
+            
+            if (excludeDimension !== 'status') {
+                const statusMatch = this.checkStatusFilter(item);
+                if (!statusMatch) return false;
+            }
+            
+            if (excludeDimension !== 'type') {
+                const typeMatch = 
+                    this.activeFilters.type.length === 0 || 
+                    this.activeFilters.type.includes(item.type);
+                if (!typeMatch) return false;
+            }
+            
+            if (excludeDimension !== 'ageRange') {
+                const ageMatch = this.checkAgeFilter(item);
+                if (!ageMatch) return false;
+            }
+            
+            if (excludeDimension !== 'targetMonth') {
+                const targetDateMatch = this.checkTargetDateFilter(item);
+                if (!targetDateMatch) return false;
+            }
+            
+            if (excludeDimension !== 'involvedDepartment') {
+                const involvedDeptMatch = this.checkInvolvedDeptFilter(item);
+                if (!involvedDeptMatch) return false;
+            }
+            
+            return true;
+        });
     }
 
     checkAgeFilter(item) {
@@ -282,6 +354,11 @@ class QMSCrossFilter {
         
         const date = new Date(item.target_date);
         const monthKey = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+        
+        // Support both single selection (string) and multi-selection (array)
+        if (Array.isArray(this.activeFilters.targetMonth)) {
+            return this.activeFilters.targetMonth.includes(monthKey);
+        }
         
         return monthKey === this.activeFilters.targetMonth;
     }
@@ -395,14 +472,31 @@ class QMSCrossFilter {
         clearTimeout(this.chartDebounceTimer);
         this.chartDebounceTimer = setTimeout(() => {
             try {
-                console.log('[Chart Render] Rendering all 6 charts...');
+                console.log('[DEBUG-Render] === renderCharts START ===');
+                console.log('[DEBUG-Render] Rendering all 6 charts...');
+                console.log('[DEBUG-Render] activeFilters.department:', this.activeFilters.department);
+                console.log('[DEBUG-Render] filteredData count:', this.filteredData.length);
+                
+                console.log('[DEBUG-Render] Rendering Department chart...');
                 this.renderDepartmentChart();
+                
+                console.log('[DEBUG-Render] Rendering Type chart...');
                 this.renderTypeChart();
+                
+                console.log('[DEBUG-Render] Rendering Status chart...');
                 this.renderStatusChart();
+                
+                console.log('[DEBUG-Render] Rendering Timeline chart...');
                 this.renderTimelineChart();
+                
+                console.log('[DEBUG-Render] Rendering Target Date chart...');
                 this.renderTargetDateChart();
+                
+                console.log('[DEBUG-Render] Rendering Involved Department chart...');
                 this.renderInvolvedDeptChart();
+                
                 console.log('[Chart Render] ✓ All 6 charts rendered successfully');
+                console.log('[DEBUG-Render] === renderCharts COMPLETE ===');
             } catch (error) {
                 console.error('[Chart Render] ❌ Error rendering charts:', error);
                 console.error('[Chart Render] Stack:', error.stack);
@@ -417,14 +511,22 @@ class QMSCrossFilter {
         }
         
         try {
+            console.log('[DEBUG-Chart] === renderDepartmentChart START ===');
             console.log('[Chart] Rendering Department chart...');
             const data = this.aggregateByDepartment();
+            console.log('[DEBUG-Chart] aggregated data:', data);
             
             if (this.charts.byDepartment) {
                 this.charts.byDepartment.destroy();
             }
             
             const ctx = this.elements.deptChart.getContext('2d');
+            console.log('[DEBUG-Chart] Canvas context:', ctx ? 'OK' : 'NULL');
+            
+            // Get colors with visual selection feedback (Power BI style)
+            console.log('[DEBUG-Chart] activeFilters.department:', this.activeFilters.department);
+            const displayColors = this.getColorsWithSelection(data.labels, this.activeFilters.department, 'department');
+            console.log('[DEBUG-Chart] displayColors returned:', displayColors);
             
             this.charts.byDepartment = new Chart(ctx, {
                 type: 'bar',
@@ -433,7 +535,7 @@ class QMSCrossFilter {
                     datasets: [{
                         label: 'QMS Count',
                         data: data.values,
-                        backgroundColor: this.getBackgroundColors(data.labels, 'department'),
+                        backgroundColor: displayColors,
                         borderColor: this.getBorderColors(data.labels, 'department'),
                         borderWidth: 2
                     }]
@@ -442,35 +544,62 @@ class QMSCrossFilter {
                     responsive: true,
                     maintainAspectRatio: true,
                     onClick: (event, elements) => {
+                        console.log('[DEBUG-Click] === Department onClick triggered ===');
+                        console.log('[DEBUG-Click] event object:', event);
+                        console.log('[DEBUG-Click] event.native:', event?.native);
+                        console.log('[DEBUG-Click] event.native.shiftKey:', event?.native?.shiftKey);
+                        console.log('[DEBUG-Click] event.native.ctrlKey:', event?.native?.ctrlKey);
+                        console.log('[DEBUG-Click] keyboardState:', this.keyboardState);
+                        console.log('[DEBUG-Click] elements:', elements);
+                        
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const department = data.labels[index];
+                            console.log('[DEBUG-Click] Clicked bar index:', index, ', department:', department);
                             
-                            // Multi-select with Shift+Click or Ctrl+Click
-                            if (this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed) {
-                                // Multi-select toggle
+                            // Check shift/ctrl from the NATIVE browser event (Chart.js wraps it in event.native)
+                            const isMultiSelect = ((event?.native?.shiftKey || event?.native?.ctrlKey) ||
+                                                  (event && (event.shiftKey || event.ctrlKey))) || 
+                                                 this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
+                            
+                            console.log('[DEBUG-Click] isMultiSelect:', isMultiSelect);
+                            console.log('[DEBUG-Click] Current activeFilters.department BEFORE:', this.activeFilters.department);
+                            
+                            if (isMultiSelect) {
+                                // Multi-select toggle (Power BI style)
+                                console.log('[DEBUG-Click] MULTI-SELECT MODE');
                                 if (this.activeFilters.department.includes(department)) {
+                                    console.log('[DEBUG-Click] Removing:', department);
                                     this.activeFilters.department = this.activeFilters.department.filter(d => d !== department);
                                 } else {
+                                    console.log('[DEBUG-Click] Adding:', department);
                                     this.activeFilters.department.push(department);
                                 }
                             } else {
                                 // Single select
+                                console.log('[DEBUG-Click] SINGLE-SELECT MODE');
                                 if (this.activeFilters.department.length === 1 && this.activeFilters.department[0] === department) {
+                                    console.log('[DEBUG-Click] Clearing selection');
                                     this.activeFilters.department = [];
                                 } else {
+                                    console.log('[DEBUG-Click] Setting single selection:', department);
                                     this.activeFilters.department = [department];
                                 }
                             }
                             
-                            console.log('[Chart] Department filter:', this.activeFilters.department);
+                            console.log('[DEBUG-Click] activeFilters.department AFTER:', this.activeFilters.department);
+                            console.log('[DEBUG-Click] Calling applyFilters()...');
                             this.applyFilters();
+                            console.log('[DEBUG-Click] Calling updateUI()...');
                             this.updateUI();
+                            console.log('[DEBUG-Click] === Department onClick COMPLETE ===');
+                        } else {
+                            console.log('[DEBUG-Click] No elements found');
                         }
                     },
                     plugins: {
                         legend: { display: true, position: 'top' },
-                        title: { display: true, text: 'QMS by Department (Click: Single | Shift+Click: Multi)' },
+                        title: { display: true, text: 'QMS by Department (Click: Single | Shift+Click: Multi-Select)' },
                         datalabels: {
                             anchor: 'end',
                             align: 'top',
@@ -483,9 +612,15 @@ class QMSCrossFilter {
                     }
                 }
             });
+            console.log('[DEBUG-Chart] Chart object created:', this.charts.byDepartment ? 'EXISTS' : 'NULL');
+            console.log('[DEBUG-Chart] Chart canvas element:', this.elements.deptChart);
+            console.log('[DEBUG-Chart] Chart.data.datasets[0].backgroundColor === displayColors?', 
+                JSON.stringify(this.charts.byDepartment.data.datasets[0].backgroundColor) === JSON.stringify(displayColors));
             console.log('[Chart] ✓ Department chart rendered');
+            console.log('[DEBUG-Chart] === renderDepartmentChart END ===');
         } catch (error) {
             console.error('[Chart] ❌ Department chart error:', error);
+            console.error('[DEBUG-Chart] Stack trace:', error.stack);
         }
     }
 
@@ -505,6 +640,13 @@ class QMSCrossFilter {
             
             const ctx = this.elements.typeChart.getContext('2d');
             
+            // Get colors with visual selection feedback
+            const displayColors = data.labels.map((label, index) => {
+                const isSelected = this.activeFilters.type.length === 0 || this.activeFilters.type.includes(label);
+                const baseColor = data.colors[index];
+                return isSelected ? baseColor : this.fadeColor(baseColor, 0.3);
+            });
+            
             this.charts.byType = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -512,7 +654,7 @@ class QMSCrossFilter {
                     datasets: [{
                         label: 'QMS Count',
                         data: data.values,
-                        backgroundColor: data.colors,
+                        backgroundColor: displayColors,
                         borderColor: data.colors.map(c => this.darkenColor(c)),
                         borderWidth: 2
                     }]
@@ -520,22 +662,24 @@ class QMSCrossFilter {
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
-                    indexAxis: undefined, // Vertical bars (like Department)
+                    indexAxis: undefined,
                     onClick: (event, elements) => {
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const type = data.labels[index];
                             
-                            // Multi-select with Shift+Click or Ctrl+Click
-                            if (this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed) {
-                                // Multi-select toggle
+                            // Check shift/ctrl from the NATIVE browser event (Chart.js wraps it in event.native)
+                            const isMultiSelect = ((event?.native?.shiftKey || event?.native?.ctrlKey) ||
+                                                  (event && (event.shiftKey || event.ctrlKey))) || 
+                                                 this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
+                            
+                            if (isMultiSelect) {
                                 if (this.activeFilters.type.includes(type)) {
                                     this.activeFilters.type = this.activeFilters.type.filter(t => t !== type);
                                 } else {
                                     this.activeFilters.type.push(type);
                                 }
                             } else {
-                                // Single select
                                 if (this.activeFilters.type.length === 1 && this.activeFilters.type[0] === type) {
                                     this.activeFilters.type = [];
                                 } else {
@@ -543,14 +687,14 @@ class QMSCrossFilter {
                                 }
                             }
                             
-                            console.log('[Chart] Type filter:', this.activeFilters.type);
+                            console.log('[Chart] Type selected:', this.activeFilters.type);
                             this.applyFilters();
                             this.updateUI();
                         }
                     },
                     plugins: {
                         legend: { display: true, position: 'top' },
-                        title: { display: true, text: 'QMS by Type (Click: Single | Shift+Click: Multi)' },
+                        title: { display: true, text: 'QMS by Type (Click: Single | Shift+Click: Multi-Select)' },
                         datalabels: {
                             anchor: 'end',
                             align: 'top',
@@ -592,6 +736,13 @@ class QMSCrossFilter {
             
             const ctx = this.elements.statusChart.getContext('2d');
             
+            // Get colors with visual selection feedback
+            const displayColors = data.labels.map((label, index) => {
+                const isSelected = this.activeFilters.status.length === 0 || this.activeFilters.status.includes(label);
+                const baseColor = data.colors[index];
+                return isSelected ? baseColor : this.fadeColor(baseColor, 0.3);
+            });
+            
             this.charts.byStatus = new Chart(ctx, {
                 type: 'pie',
                 data: {
@@ -599,7 +750,7 @@ class QMSCrossFilter {
                     datasets: [{
                         label: 'Count',
                         data: data.values,
-                        backgroundColor: data.colors
+                        backgroundColor: displayColors
                     }]
                 },
                 options: {
@@ -610,16 +761,18 @@ class QMSCrossFilter {
                             const index = elements[0].index;
                             const status = data.labels[index];
                             
-                            // Multi-select with Shift+Click or Ctrl+Click
-                            if (this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed) {
-                                // Multi-select toggle
+                            // Check shift/ctrl from the NATIVE browser event (Chart.js wraps it in event.native)
+                            const isMultiSelect = ((event?.native?.shiftKey || event?.native?.ctrlKey) ||
+                                                  (event && (event.shiftKey || event.ctrlKey))) || 
+                                                 this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
+                            
+                            if (isMultiSelect) {
                                 if (this.activeFilters.status.includes(status)) {
                                     this.activeFilters.status = this.activeFilters.status.filter(s => s !== status);
                                 } else {
                                     this.activeFilters.status.push(status);
                                 }
                             } else {
-                                // Single select
                                 if (this.activeFilters.status.length === 1 && this.activeFilters.status[0] === status) {
                                     this.activeFilters.status = [];
                                 } else {
@@ -627,14 +780,14 @@ class QMSCrossFilter {
                                 }
                             }
                             
-                            console.log('[Chart] Status filter:', this.activeFilters.status);
+                            console.log('[Chart] Status selected:', this.activeFilters.status);
                             this.applyFilters();
                             this.updateUI();
                         }
                     },
                     plugins: {
                         legend: { display: true, position: 'bottom' },
-                        title: { display: true, text: 'QMS by Status (Click: Single | Shift+Click: Multi)' },
+                        title: { display: true, text: 'QMS by Status (Click: Single | Shift+Click: Multi-Select)' },
                         datalabels: {
                             formatter: (value, context) => {
                                 return value;
@@ -668,6 +821,13 @@ class QMSCrossFilter {
             
             const ctx = this.elements.timelineChart.getContext('2d');
             
+            // Get colors with visual selection feedback
+            const displayColors = data.ageRanges.map((ageRange) => {
+                const isSelected = this.activeFilters.ageRange.length === 0 || this.activeFilters.ageRange.includes(ageRange);
+                const baseColor = '#ff7300';
+                return isSelected ? baseColor : this.fadeColor(baseColor, 0.3);
+            });
+            
             this.charts.byTimeline = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -675,7 +835,7 @@ class QMSCrossFilter {
                     datasets: [{
                         label: 'QMS Count',
                         data: data.values,
-                        backgroundColor: '#ff7300',
+                        backgroundColor: displayColors,
                         borderColor: '#cc5c00',
                         borderWidth: 2
                     }]
@@ -688,8 +848,12 @@ class QMSCrossFilter {
                             const index = elements[0].index;
                             const ageRange = data.ageRanges[index];
                             
-                            // Multi-select with Shift+Click or Ctrl+Click
-                            if (this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed) {
+                            // Check shift/ctrl from the NATIVE browser event (Chart.js wraps it in event.native)
+                            const isMultiSelect = ((event?.native?.shiftKey || event?.native?.ctrlKey) ||
+                                                  (event && (event.shiftKey || event.ctrlKey))) || 
+                                                 this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
+                            
+                            if (isMultiSelect) {
                                 // Multi-select toggle
                                 if (this.activeFilters.ageRange.includes(ageRange)) {
                                     this.activeFilters.ageRange = this.activeFilters.ageRange.filter(a => a !== ageRange);
@@ -712,7 +876,7 @@ class QMSCrossFilter {
                     },
                     plugins: {
                         legend: { display: true, position: 'top' },
-                        title: { display: true, text: 'QMS Aging Timeline (Click: Single | Shift+Click: Multi)' },
+                        title: { display: true, text: 'QMS Aging Timeline (Click: Single | Shift+Click: Multi-Select)' },
                         datalabels: {
                             anchor: 'end',
                             align: 'top',
@@ -754,7 +918,7 @@ class QMSCrossFilter {
             
             // Determine what to show based on current mode
             let chartLabels, chartValues, chartColors, drillDownData;
-            let chartTitle = 'QMS Target Dates by Year (Click to Drill Down)';
+            let chartTitle = 'QMS Target Dates by Year';
             
             if (this.chartState.targetDateMode === 'years') {
                 // Show year-level data
@@ -775,7 +939,7 @@ class QMSCrossFilter {
                 chartValues = monthsArray.map(m => m.count);
                 chartColors = this.generateColors(monthsArray.length || 1);
                 drillDownData = monthsArray.map(m => m.key);
-                chartTitle = 'Months in ' + this.chartState.selectedYear + ' (Click to Filter | ← Back to Years)';
+                chartTitle = 'Months in ' + this.chartState.selectedYear;
             }
             
             if (!chartLabels || chartLabels.length === 0) {
@@ -796,6 +960,25 @@ class QMSCrossFilter {
                 return;
             }
             
+            // Apply visual selection feedback for Target Date chart
+            const displayColors = chartColors.map((color, index) => {
+                // For months view, highlight selected months (support both single and multi-select)
+                if (this.chartState.targetDateMode === 'months' && this.activeFilters.targetMonth) {
+                    const monthKey = drillDownData[index];
+                    let isSelected = false;
+                    
+                    if (Array.isArray(this.activeFilters.targetMonth)) {
+                        isSelected = this.activeFilters.targetMonth.includes(monthKey);
+                    } else {
+                        isSelected = monthKey === this.activeFilters.targetMonth;
+                    }
+                    
+                    return isSelected ? color : this.fadeColor(color, 0.3);
+                }
+                // For years view, show all normally (no selection highlighting for drill-down)
+                return color;
+            });
+            
             this.charts.byTargetDate = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -803,7 +986,7 @@ class QMSCrossFilter {
                     datasets: [{
                         label: 'QMS Count',
                         data: chartValues,
-                        backgroundColor: chartColors,
+                        backgroundColor: displayColors,
                         borderColor: chartColors.map(c => this.darkenColor(c)),
                         borderWidth: 2,
                         borderRadius: 4
@@ -814,9 +997,13 @@ class QMSCrossFilter {
                     maintainAspectRatio: true,
                     indexAxis: undefined,  // Vertical bars
                     onClick: (event, elements) => {
-                        // Check if Shift key is pressed for drill-up
-                        if (this.keyboardState.shiftPressed && this.chartState.targetDateMode === 'months') {
-                            // Drill up from months to years
+                        // Check if Ctrl key is pressed for drill-up (Chart.js wraps native event in event.native)
+                        const isCtrlClick = ((event?.native?.ctrlKey) || (event && event.ctrlKey)) || this.keyboardState.ctrlPressed;
+                        // Check if Shift key is pressed for multi-select
+                        const isShiftClick = ((event?.native?.shiftKey) || (event && event.shiftKey)) || this.keyboardState.shiftPressed;
+                        
+                        if (isCtrlClick && this.chartState.targetDateMode === 'months') {
+                            // Drill up from months to years (using Ctrl+Click)
                             this.chartState.targetDateMode = 'years';
                             this.chartState.selectedYear = null;
                             console.log('[Chart] Drilled up to year view');
@@ -835,10 +1022,31 @@ class QMSCrossFilter {
                                 console.log('[Chart] Drilled down to year:', drillValue);
                                 this.renderTargetDateChart();
                             } else if (this.chartState.targetDateMode === 'months') {
-                                // Filter by this month
+                                // Multi-select months with Shift+Click or single-select
                                 const monthKey = drillValue;
-                                console.log('[Chart] Month filter applied:', monthKey);
-                                this.toggleTargetMonthFilter(monthKey, chartLabels[index]);
+                                console.log('[Chart] Month filter - isShiftClick:', isShiftClick, 'monthKey:', monthKey);
+                                
+                                if (isShiftClick) {
+                                    // Multi-select: toggle month in selection
+                                    if (Array.isArray(this.activeFilters.targetMonth) && this.activeFilters.targetMonth.includes(monthKey)) {
+                                        // Remove from selection
+                                        this.activeFilters.targetMonth = this.activeFilters.targetMonth.filter(m => m !== monthKey);
+                                    } else {
+                                        // Add to selection
+                                        if (!Array.isArray(this.activeFilters.targetMonth)) {
+                                            this.activeFilters.targetMonth = this.activeFilters.targetMonth ? [this.activeFilters.targetMonth] : [];
+                                        }
+                                        this.activeFilters.targetMonth.push(monthKey);
+                                    }
+                                    console.log('[Chart] Multi-selected months:', this.activeFilters.targetMonth);
+                                } else {
+                                    // Single select: replace selection
+                                    this.activeFilters.targetMonth = monthKey;
+                                    console.log('[Chart] Single selected month:', monthKey);
+                                }
+                                
+                                this.applyFilters();
+                                this.updateUI();
                             }
                         }
                     },
@@ -847,21 +1055,11 @@ class QMSCrossFilter {
                         title: { display: true, text: chartTitle, font: { size: 13, weight: 'bold' } },
                         tooltip: {
                             backgroundColor: 'rgba(0,0,0,0.8)',
-                            padding: 12,
+                            padding: 8,
                             callbacks: {
                                 label: function(context) {
-                                    let label = context.dataset.label + ': ' + context.parsed.y + ' QMS';
-                                    if (this.chartState && this.chartState.targetDateMode === 'months') {
-                                        label += '\n(Shift+Click to go back to years)';
-                                    }
-                                    return label;
-                                }.bind(this),
-                                afterLabel: function(context) {
-                                    if (this.chartState && this.chartState.targetDateMode === 'years') {
-                                        return 'Click to drill down to months';
-                                    }
-                                    return 'Click to filter by this month';
-                                }.bind(this)
+                                    return context.dataset.label + ': ' + context.parsed.y;
+                                }
                             }
                         },
                         datalabels: {
@@ -888,6 +1086,9 @@ class QMSCrossFilter {
                 }
             });
             console.log('[Chart] Target Date chart rendered (mode: ' + this.chartState.targetDateMode + ')');
+            
+            // Update drill button visibility
+            this.updateTargetDateDrillButtons();
         } catch (error) {
             console.error('[Chart] Target Date chart error:', error);
             console.error('[Chart] Stack:', error.stack);
@@ -898,45 +1099,96 @@ class QMSCrossFilter {
      * ===== DATA AGGREGATION =====
      */
     aggregateByDepartment() {
-        const agg = {};
-        this.filteredData.forEach(item => {
-            agg[item.department] = (agg[item.department] || 0) + 1;
+        console.log('[DEBUG-Aggregate] === aggregateByDepartment START (Power BI Cross-Filter) ===');
+        
+        // Get data filtered by ALL OTHER dimensions (excluding department)
+        const crossFilteredData = this.getFilteredDataWithoutDimension('department');
+        console.log('[DEBUG-Aggregate] Cross-filtered data count:', crossFilteredData.length);
+        
+        // Get all possible departments from allData
+        const allDepts = {};
+        this.allData.forEach(item => {
+            allDepts[item.department] = 0;  // Initialize with 0
         });
         
-        const labels = Object.keys(agg).sort();
-        const values = labels.map(k => agg[k]);
+        // Count records by department from cross-filtered data
+        crossFilteredData.forEach(item => {
+            allDepts[item.department] = (allDepts[item.department] || 0) + 1;
+        });
         
+        console.log('[DEBUG-Aggregate] Department counts:', allDepts);
+        
+        const labels = Object.keys(allDepts).sort();
+        const values = labels.map(k => allDepts[k]);
+        
+        console.log('[DEBUG-Aggregate] === aggregateByDepartment END ===');
         return { labels, values };
     }
 
     aggregateByType() {
-        const agg = {};
-        this.filteredData.forEach(item => {
-            agg[item.type] = (agg[item.type] || 0) + 1;
+        console.log('[DEBUG-Aggregate] === aggregateByType START (Power BI Cross-Filter) ===');
+        
+        // Get data filtered by ALL OTHER dimensions (excluding type)
+        const crossFilteredData = this.getFilteredDataWithoutDimension('type');
+        console.log('[DEBUG-Aggregate] Cross-filtered data count:', crossFilteredData.length);
+        
+        // Get all possible types from allData
+        const allTypes = {};
+        this.allData.forEach(item => {
+            allTypes[item.type] = 0;  // Initialize with 0
         });
         
-        const labels = Object.keys(agg).sort();
-        const values = labels.map(k => agg[k]);
+        // Count records by type from cross-filtered data
+        crossFilteredData.forEach(item => {
+            allTypes[item.type] = (allTypes[item.type] || 0) + 1;
+        });
+        
+        console.log('[DEBUG-Aggregate] Type counts:', allTypes);
+        
+        const labels = Object.keys(allTypes).sort();
+        const values = labels.map(k => allTypes[k]);
         const colors = this.generateColors(labels.length);
         
+        console.log('[DEBUG-Aggregate] === aggregateByType END ===');
         return { labels, values, colors };
     }
 
     aggregateByStatus() {
-        const agg = {};
-        this.filteredData.forEach(item => {
-            agg[item.status] = (agg[item.status] || 0) + 1;
+        console.log('[DEBUG-Aggregate] === aggregateByStatus START (Power BI Cross-Filter) ===');
+        
+        // Get data filtered by ALL OTHER dimensions (excluding status)
+        const crossFilteredData = this.getFilteredDataWithoutDimension('status');
+        console.log('[DEBUG-Aggregate] Cross-filtered data count:', crossFilteredData.length);
+        
+        // Get all possible statuses from allData
+        const allStatuses = {};
+        this.allData.forEach(item => {
+            allStatuses[item.status] = 0;  // Initialize with 0
         });
         
-        const labels = Object.keys(agg).sort();
-        const values = labels.map(k => agg[k]);
+        // Count records by status from cross-filtered data
+        crossFilteredData.forEach(item => {
+            allStatuses[item.status] = (allStatuses[item.status] || 0) + 1;
+        });
+        
+        console.log('[DEBUG-Aggregate] Status counts:', allStatuses);
+        
+        const labels = Object.keys(allStatuses).sort();
+        const values = labels.map(k => allStatuses[k]);
         const colorMap = { 'Open': '#0d6efd', 'CFT': '#20c997', 'EM': '#6610f2', 'Closed': '#6c757d' };
         const colors = labels.map(l => colorMap[l] || '#999');
         
+        console.log('[DEBUG-Aggregate] === aggregateByStatus END ===');
         return { labels, values, colors };
     }
 
     aggregateByTimeline() {
+        console.log('[DEBUG-Aggregate] === aggregateByTimeline START (Power BI Cross-Filter) ===');
+        
+        // Get data filtered by ALL OTHER dimensions (excluding ageRange)
+        const crossFilteredData = this.getFilteredDataWithoutDimension('ageRange');
+        console.log('[DEBUG-Aggregate] Cross-filtered data count:', crossFilteredData.length);
+        
         const buckets = {
             'less_2_months': 0,
             '2_months_plus': 0,
@@ -945,7 +1197,8 @@ class QMSCrossFilter {
             '1_year_plus': 0
         };
         
-        this.filteredData.forEach(item => {
+        // Count records by age range from cross-filtered data
+        crossFilteredData.forEach(item => {
             const days = this.getDaysDifference(item.initiated_date);
             const bucket = this.getAgeRange(days);
             buckets[bucket]++;
@@ -970,9 +1223,14 @@ class QMSCrossFilter {
         const yearMap = {};
         let itemsWithTargetDate = 0;
         
-        console.log('[Chart] Aggregating target dates by year and month...');
+        console.log('[Chart] Aggregating target dates by year and month (Power BI Cross-Filter)...');
         
-        this.filteredData.forEach(item => {
+        // Get data filtered by ALL OTHER dimensions (excluding targetMonth)
+        const crossFilteredData = this.getFilteredDataWithoutDimension('targetMonth');
+        console.log('[Chart] Cross-filtered data count for target dates:', crossFilteredData.length);
+        
+        // Count records by target date from cross-filtered data
+        crossFilteredData.forEach(item => {
             if (!item.target_date) return;
             
             itemsWithTargetDate++;
@@ -1003,7 +1261,7 @@ class QMSCrossFilter {
         const sortedYears = Object.keys(yearMap).sort().reverse();  // Newest first
         
         console.log('[Chart] ✓ Hierarchical aggregation complete:');
-        console.log('  - Total filtered records:', this.filteredData.length);
+        console.log('  - Total all records:', this.allData.length);
         console.log('  - Records with target_date:', itemsWithTargetDate);
         console.log('  - Years found:', sortedYears.length);
         
@@ -1085,9 +1343,14 @@ class QMSCrossFilter {
      * ===== UI UPDATE =====
      */
     updateUI() {
+        console.log('[DEBUG-UI] === updateUI called ===');
+        console.log('[DEBUG-UI] Calling renderCharts()...');
         this.renderCharts();
+        console.log('[DEBUG-UI] Calling updateTableFromFilters()...');
         this.updateTableFromFilters();
+        console.log('[DEBUG-UI] Calling updateFilterIndicators()...');
         this.updateFilterIndicators();
+        console.log('[DEBUG-UI] === updateUI COMPLETE ===');
     }
 
     updateFilterIndicators() {
@@ -1111,6 +1374,11 @@ class QMSCrossFilter {
             targetMonth: null,
             involvedDepartment: []
         };
+        // Also reset target date drill state
+        if (this.chartState) {
+            this.chartState.targetDateMode = 'years';
+            this.chartState.selectedYear = null;
+        }
         this.applyFilters();
         this.updateUI();
         
@@ -1118,6 +1386,50 @@ class QMSCrossFilter {
         document.getElementById('globalSearch').value = '';
         document.getElementById('deptFilter').value = '';
         console.log('[QMS Cross-Filter] All filters reset');
+    }
+
+    /**
+     * Drill down in Target Date chart (Years → Months)
+     */
+    drillDownTargetDate() {
+        if (this.chartState && this.chartState.targetDateMode === 'years') {
+            // Find first year with data
+            if (this.chartState.hierarchy && this.chartState.hierarchy.years.length > 0) {
+                this.chartState.selectedYear = this.chartState.hierarchy.years[0];
+                this.chartState.targetDateMode = 'months';
+                console.log('[Chart] Drill down to:', this.chartState.selectedYear);
+                this.renderTargetDateChart();
+            }
+        }
+    }
+
+    /**
+     * Drill up in Target Date chart (Months → Years)
+     */
+    drillUpTargetDate() {
+        if (this.chartState && this.chartState.targetDateMode === 'months') {
+            this.chartState.targetDateMode = 'years';
+            this.chartState.selectedYear = null;
+            console.log('[Chart] Drill up to years view');
+            this.renderTargetDateChart();
+        }
+    }
+
+    /**
+     * Update Target Date drill button visibility
+     */
+    updateTargetDateDrillButtons() {
+        if (!this.elements.drillUpBtn || !this.elements.drillDownBtn) return;
+        
+        if (this.chartState && this.chartState.targetDateMode === 'months') {
+            // In months view: show drill-up button
+            this.elements.drillUpBtn.style.display = 'inline-block';
+            this.elements.drillDownBtn.style.display = 'none';
+        } else {
+            // In years view: show drill-down button
+            this.elements.drillUpBtn.style.display = 'none';
+            this.elements.drillDownBtn.style.display = 'inline-block';
+        }
     }
 
     /**
@@ -1243,9 +1555,13 @@ class QMSCrossFilter {
     aggregateByInvolvedDepartment() {
         const deptMap = {};
         
-        console.log('[Chart] Aggregating by involved departments...');
+        console.log('[Chart] Aggregating by involved departments (Power BI Cross-Filter)...');
         
-        this.filteredData.forEach(item => {
+        // Get data filtered by ALL OTHER dimensions (excluding involvedDepartment)
+        const crossFilteredData = this.getFilteredDataWithoutDimension('involvedDepartment');
+        console.log('[Chart] Cross-filtered data count for involved depts:', crossFilteredData.length);
+        
+        crossFilteredData.forEach(item => {
             const depts = item.involved_dept_codes || [];
             depts.forEach(dept => {
                 if (!deptMap[dept]) {
@@ -1284,6 +1600,13 @@ class QMSCrossFilter {
             const ctx = this.elements.involvedDeptChart.getContext('2d');
             const self = this;
             
+            // Get colors with visual selection feedback
+            const displayColors = data.labels.map((label, index) => {
+                const isSelected = this.activeFilters.involvedDepartment.length === 0 || this.activeFilters.involvedDepartment.includes(data.keys[index]);
+                const baseColor = data.colors[index];
+                return isSelected ? baseColor : this.fadeColor(baseColor, 0.3);
+            });
+            
             this.charts.byInvolvedDept = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -1291,7 +1614,7 @@ class QMSCrossFilter {
                     datasets: [{
                         label: 'QMS Count',
                         data: data.values,
-                        backgroundColor: data.colors,
+                        backgroundColor: displayColors,
                         borderColor: data.colors.map(c => this.darkenColor(c)),
                         borderWidth: 2,
                         borderRadius: 4
@@ -1305,7 +1628,12 @@ class QMSCrossFilter {
                             const index = elements[0].index;
                             const dept = data.keys[index];
                             
-                            if (this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed) {
+                            // Check shift/ctrl from the NATIVE browser event (Chart.js wraps it in event.native)
+                            const isMultiSelect = ((event?.native?.shiftKey || event?.native?.ctrlKey) ||
+                                                  (event && (event.shiftKey || event.ctrlKey))) || 
+                                                 this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
+                            
+                            if (isMultiSelect) {
                                 if (this.activeFilters.involvedDepartment.includes(dept)) {
                                     this.activeFilters.involvedDepartment = this.activeFilters.involvedDepartment.filter(d => d !== dept);
                                 } else {
@@ -1326,7 +1654,7 @@ class QMSCrossFilter {
                     },
                     plugins: {
                         legend: { display: true, position: 'top' },
-                        title: { display: true, text: 'QMS by Involved Departments (Click: Single | Shift+Click: Multi)' },
+                        title: { display: true, text: 'QMS by Involved Departments (Click: Single | Shift+Click: Multi-Select)' },
                         datalabels: {
                             anchor: 'end',
                             align: 'top',
@@ -1370,6 +1698,93 @@ class QMSCrossFilter {
             }
             return '#0d6efd';
         });
+    }
+    
+    /**
+     * Get colors with visual feedback (highlight selected, fade unselected)
+     * This implements Power BI-style visual filtering
+     */
+    getColorsWithSelection(labels, activeSelections, filterType) {
+        try {
+            console.log('[DEBUG-Selection] === getColorsWithSelection called ===');
+            console.log('[DEBUG-Selection] filterType:', filterType);
+            console.log('[DEBUG-Selection] labels:', labels);
+            console.log('[DEBUG-Selection] activeSelections:', activeSelections);
+            
+            const baseColors = this.getBackgroundColors(labels, filterType);
+            console.log('[DEBUG-Selection] baseColors:', baseColors);
+            
+            // If nothing is selected, show all colors normally
+            if (activeSelections.length === 0) {
+                console.log('[DEBUG-Selection] No active selections - returning base colors');
+                return baseColors;
+            }
+            
+            // Otherwise, highlight selected and fade unselected
+            const displayColors = baseColors.map((color, index) => {
+                const label = labels[index];
+                const isSelected = activeSelections.includes(label);
+                
+                console.log('[DEBUG-Selection] Index', index, '- Label:', label, '- isSelected:', isSelected, '- baseColor:', color);
+                
+                if (isSelected) {
+                    console.log('[DEBUG-Selection] ✓ SELECTED:', label, '- returning full color');
+                    return color;
+                } else {
+                    const faded = this.fadeColor(color, 0.3);
+                    console.log('[DEBUG-Selection] ✗ FADED:', label, '- from', color, 'to', faded);
+                    return faded;
+                }
+            });
+            
+            console.log('[DEBUG-Selection] Final displayColors:', displayColors);
+            return displayColors;
+        } catch (error) {
+            console.error('[DEBUG-Selection] ERROR:', error);
+            console.error('[DEBUG-Selection] Stack:', error.stack);
+            return this.getBackgroundColors(labels, filterType);
+        }
+    }
+    
+    /**
+     * Fade a color by reducing opacity
+     */
+    fadeColor(color, opacity) {
+        try {
+            console.log('[DEBUG-Color] fadeColor called - color:', color, 'opacity:', opacity);
+            const rgb = this.hexToRgb(color);
+            console.log('[DEBUG-Color] RGB result:', rgb);
+            const faded = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
+            console.log('[DEBUG-Color] Faded result:', faded);
+            return faded;
+        } catch (error) {
+            console.error('[DEBUG-Color] ERROR in fadeColor:', color, error);
+            return 'rgba(0, 0, 0, 0.3)';
+        }
+    }
+    
+    /**
+     * Convert hex color to RGB
+     */
+    hexToRgb(hex) {
+        try {
+            console.log('[DEBUG-Color] hexToRgb called - hex:', hex);
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            if (!result) {
+                console.warn('[DEBUG-Color] ⚠️ INVALID HEX FORMAT:', hex);
+                return { r: 0, g: 0, b: 0 };
+            }
+            const rgb = {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            };
+            console.log('[DEBUG-Color] Conversion result:', rgb);
+            return rgb;
+        } catch (error) {
+            console.error('[DEBUG-Color] ERROR in hexToRgb:', hex, error);
+            return { r: 0, g: 0, b: 0 };
+        }
     }
 
     getBorderColors(labels, filterType) {
