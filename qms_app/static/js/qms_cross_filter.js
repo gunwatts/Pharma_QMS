@@ -9,6 +9,12 @@ class QMSCrossFilter {
         this.allData = [];
         this.filteredData = [];
         
+        // ===== KEYBOARD STATE (for shift+click detection) =====
+        this.keyboardState = {
+            shiftPressed: false,
+            ctrlPressed: false
+        };
+        
         // ===== FILTER STATE =====
         this.activeFilters = {
             department: [],
@@ -153,6 +159,19 @@ class QMSCrossFilter {
      * Bind event listeners for filters and reset button
      */
     bindEvents() {
+        // ===== KEYBOARD STATE TRACKING (for Shift+Click detection) =====
+        document.addEventListener('keydown', (e) => {
+            if (e.shiftKey) this.keyboardState.shiftPressed = true;
+            if (e.ctrlKey || e.metaKey) this.keyboardState.ctrlPressed = true;
+            console.log('[Keyboard] Key pressed - Shift: ' + this.keyboardState.shiftPressed + ', Ctrl: ' + this.keyboardState.ctrlPressed);
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            this.keyboardState.shiftPressed = false;
+            this.keyboardState.ctrlPressed = false;
+            console.log('[Keyboard] All keys released');
+        });
+        
         // Reset button
         if (this.elements.resetBtn) {
             this.elements.resetBtn.addEventListener('click', () => this.resetFilters());
@@ -228,14 +247,32 @@ class QMSCrossFilter {
     checkStatusFilter(item) {
         if (this.activeFilters.status.length === 0) return true;
         
-        // Special handling for Overdue filter
-        if (this.activeFilters.status[0] === 'Overdue') {
-            const today = new Date();
-            const targetDate = new Date(item.target_date);
-            return targetDate < today && item.status === 'Open';
-        }
-        
-        return this.activeFilters.status.includes(item.status);
+        // Check each active status filter
+        return this.activeFilters.status.some(filterStatus => {
+            if (filterStatus === 'Overdue') {
+                // Overdue: target_date < today AND status is Open
+                const today = new Date();
+                const targetDate = new Date(item.target_date);
+                return targetDate < today && item.status === 'Open';
+            } else if (filterStatus === 'Review') {
+                // Review: review_on is set AND review_on <= today + 7 days
+                if (!item.review_on) return false;
+                
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);  // Set to start of today
+                const reviewDate = new Date(item.review_on);
+                reviewDate.setHours(0, 0, 0, 0);  // Set to start of review date
+                
+                const sevenDaysFromNow = new Date(today);
+                sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+                
+                // Review date should be <= today + 7 days (i.e., it's soon or overdue)
+                return reviewDate <= sevenDaysFromNow;
+            } else {
+                // Normal status field comparison
+                return item.status === filterStatus;
+            }
+        });
     }
 
     checkTargetDateFilter(item) {
@@ -410,7 +447,7 @@ class QMSCrossFilter {
                             const department = data.labels[index];
                             
                             // Multi-select with Shift+Click or Ctrl+Click
-                            if (event.native.shiftKey || event.native.ctrlKey) {
+                            if (this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed) {
                                 // Multi-select toggle
                                 if (this.activeFilters.department.includes(department)) {
                                     this.activeFilters.department = this.activeFilters.department.filter(d => d !== department);
@@ -490,7 +527,7 @@ class QMSCrossFilter {
                             const type = data.labels[index];
                             
                             // Multi-select with Shift+Click or Ctrl+Click
-                            if (event.native.shiftKey || event.native.ctrlKey) {
+                            if (this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed) {
                                 // Multi-select toggle
                                 if (this.activeFilters.type.includes(type)) {
                                     this.activeFilters.type = this.activeFilters.type.filter(t => t !== type);
@@ -574,7 +611,7 @@ class QMSCrossFilter {
                             const status = data.labels[index];
                             
                             // Multi-select with Shift+Click or Ctrl+Click
-                            if (event.native.shiftKey || event.native.ctrlKey) {
+                            if (this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed) {
                                 // Multi-select toggle
                                 if (this.activeFilters.status.includes(status)) {
                                     this.activeFilters.status = this.activeFilters.status.filter(s => s !== status);
@@ -650,12 +687,32 @@ class QMSCrossFilter {
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const ageRange = data.ageRanges[index];
-                            this.toggleAgeFilter(ageRange);
+                            
+                            // Multi-select with Shift+Click or Ctrl+Click
+                            if (this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed) {
+                                // Multi-select toggle
+                                if (this.activeFilters.ageRange.includes(ageRange)) {
+                                    this.activeFilters.ageRange = this.activeFilters.ageRange.filter(a => a !== ageRange);
+                                } else {
+                                    this.activeFilters.ageRange.push(ageRange);
+                                }
+                            } else {
+                                // Single select - toggle
+                                if (this.activeFilters.ageRange.length === 1 && this.activeFilters.ageRange[0] === ageRange) {
+                                    this.activeFilters.ageRange = [];
+                                } else {
+                                    this.activeFilters.ageRange = [ageRange];
+                                }
+                            }
+                            
+                            console.log('[Chart] Age range filter:', this.activeFilters.ageRange);
+                            this.applyFilters();
+                            this.updateUI();
                         }
                     },
                     plugins: {
                         legend: { display: true, position: 'top' },
-                        title: { display: true, text: 'QMS Aging Timeline' },
+                        title: { display: true, text: 'QMS Aging Timeline (Click: Single | Shift+Click: Multi)' },
                         datalabels: {
                             anchor: 'end',
                             align: 'top',
@@ -758,7 +815,7 @@ class QMSCrossFilter {
                     indexAxis: undefined,  // Vertical bars
                     onClick: (event, elements) => {
                         // Check if Shift key is pressed for drill-up
-                        if (event.native.shiftKey && this.chartState.targetDateMode === 'months') {
+                        if (this.keyboardState.shiftPressed && this.chartState.targetDateMode === 'months') {
                             // Drill up from months to years
                             this.chartState.targetDateMode = 'years';
                             this.chartState.selectedYear = null;
@@ -1248,23 +1305,23 @@ class QMSCrossFilter {
                             const index = elements[0].index;
                             const dept = data.keys[index];
                             
-                            if (event.native.shiftKey || event.native.ctrlKey) {
-                                if (self.activeFilters.involvedDepartment.includes(dept)) {
-                                    self.activeFilters.involvedDepartment = self.activeFilters.involvedDepartment.filter(d => d !== dept);
+                            if (this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed) {
+                                if (this.activeFilters.involvedDepartment.includes(dept)) {
+                                    this.activeFilters.involvedDepartment = this.activeFilters.involvedDepartment.filter(d => d !== dept);
                                 } else {
-                                    self.activeFilters.involvedDepartment.push(dept);
+                                    this.activeFilters.involvedDepartment.push(dept);
                                 }
                             } else {
-                                if (self.activeFilters.involvedDepartment.length === 1 && self.activeFilters.involvedDepartment[0] === dept) {
-                                    self.activeFilters.involvedDepartment = [];
+                                if (this.activeFilters.involvedDepartment.length === 1 && this.activeFilters.involvedDepartment[0] === dept) {
+                                    this.activeFilters.involvedDepartment = [];
                                 } else {
-                                    self.activeFilters.involvedDepartment = [dept];
+                                    this.activeFilters.involvedDepartment = [dept];
                                 }
                             }
                             
-                            console.log('[Chart] Involved dept:', self.activeFilters.involvedDepartment);
-                            self.applyFilters();
-                            self.updateUI();
+                            console.log('[Chart] Involved dept:', this.activeFilters.involvedDepartment);
+                            this.applyFilters();
+                            this.updateUI();
                         }
                     },
                     plugins: {

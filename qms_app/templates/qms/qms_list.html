@@ -231,7 +231,10 @@
     <!-- CHARTS SECTION (Power BI Style) -->
     <div class="charts-section mb-3">
         <h5 class="mb-3" style="color: #212529; font-weight: bold; font-size: 14px;">
-            📊 Analytics Dashboard (Click charts to filter)
+            📊 Analytics Dashboard 
+            <span style="font-size: 12px; color: #666; font-weight: normal;">
+                (Click: Single Filter | Shift+Click: Multi-Select)
+            </span>
         </h5>
         <div class="charts-grid">
             <div class="chart-container">
@@ -362,12 +365,27 @@ window.QMS_DIAGNOSTIC = {
         console.log('Data loaded:', window.qmsFilter.allData.length, 'records');
         console.log('Data filtered:', window.qmsFilter.filteredData.length, 'records');
         console.log('Active filters:', window.qmsFilter.activeFilters);
+        console.log('Keyboard state:', window.qmsFilter.keyboardState);
         console.log('Charts initialized:', {
             byDepartment: window.qmsFilter.charts.byDepartment ? '✓' : '❌',
             byType: window.qmsFilter.charts.byType ? '✓' : '❌',
             byStatus: window.qmsFilter.charts.byStatus ? '✓' : '❌',
             byTimeline: window.qmsFilter.charts.byTimeline ? '✓' : '❌'
         });
+        console.groupEnd();
+    },
+    testMultiSelect: function() {
+        console.group('[DIAGNOSTIC] Testing Multi-Select (Shift+Click)');
+        console.log('Instructions:');
+        console.log('1. Open the browser DevTools (F12)');
+        console.log('2. Go to Console tab');
+        console.log('3. Try Shift+Click on chart bars:');
+        console.log('   - Single click: Select one item');
+        console.log('   - Shift+Click: Add/remove from multi-select');
+        console.log('4. Watch console logs for:');
+        console.log('   - [Keyboard] Key pressed/released');
+        console.log('   - [Chart] Filter being updated');
+        console.log('Current keyboard state:', window.qmsFilter ? window.qmsFilter.keyboardState : 'qmsFilter not ready');
         console.groupEnd();
     },
     runAll: async function() {
@@ -379,10 +397,12 @@ window.QMS_DIAGNOSTIC = {
         await this.testAPI();
         this.testElements();
         this.testFilter();
+        this.testMultiSelect();
         console.log('═══════════════════════════════════════');
     }
 };
 console.log('[QMS] Run QMS_DIAGNOSTIC.runAll() in console to test all components');
+console.log('[QMS] Run QMS_DIAGNOSTIC.testMultiSelect() to test Shift+Click functionality');
 </script>
 
 <script>
