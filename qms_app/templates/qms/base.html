@@ -47,6 +47,7 @@
                         {% if user.is_staff or user|in_group:"admin" %}
                             <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'upload_qms_from_excel' %}">Upload QMS</a></li>
                             <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'admin_panel' %}">Admin Panel</a></li>
+                            <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'department_email_sender' %}">📧 Email Sender</a></li>
                         <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'list_update_requests' %}">Requests</a></li>
                         <li class="nav-item"><a class="nav-link hover-btn" href="{% url 'qms_report_form' %}">Reports</a></li>
                         {% else %}

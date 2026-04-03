@@ -157,18 +157,48 @@
         border-radius: 4px;
         color: #666;
     }
+
+    /* Loading Animation Styles */
+    .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: white;
+        animation: spin 1s ease-in-out infinite;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .send-btn-container {
+        position: relative;
+    }
+
+    .send-btn-container button:disabled {
+        opacity: 0.8;
+        cursor: not-allowed;
+    }
 </style>
 
 <div class="email-container">
-    <h1>Department Email Sender</h1>
-    
-    {% if messages %}
-        {% for message in messages %}
-            <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}">
-                {{ message }}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1>Department Email Sender</h1>
+        <form method="POST" style="margin: 0;" id="sendEmailsForm">
+            {% csrf_token %}
+            <div class="send-btn-container">
+                {% if outlook_available %}
+                    <button type="submit" name="send_emails" id="sendEmailsBtn" class="btn btn-primary" style="background-color: #28a745; padding: 12px 20px; font-size: 16px; min-width: 200px;" onclick="return showLoadingAndConfirm(event);">📤 <strong><span id="buttonText">Send Emails Now</span></strong></button>
+                {% else %}
+                    <button type="submit" name="send_emails" class="btn btn-danger" disabled style="padding: 12px 20px; font-size: 16px;">📤 Send Emails (Outlook not available)</button>
+                {% endif %}
             </div>
-        {% endfor %}
-    {% endif %}
+        </form>
+    </div>
     
     {% if not outlook_available %}
         <div class="alert alert-warning">
@@ -182,7 +212,7 @@
         <br>1. Edit the email addresses for each department (To and CC fields)
         <br>2. Click "Save Configuration" to save the settings
         <br>3. View the preview of near-due QMS below
-        <br>4. Click "Send Emails" to send notifications to all departments with near-due QMS
+        <br>4. Click "Send Emails Now" button at the top to send notifications to all departments with near-due QMS
     </div>
     
     <!-- Email Configuration Section -->
@@ -216,11 +246,6 @@
         
         <div class="button-group">
             <button type="submit" name="save_config" class="btn">💾 Save Configuration</button>
-            {% if outlook_available %}
-                <button type="submit" name="send_emails" class="btn" onclick="return confirm('Are you sure you want to send emails to all departments with near-due QMS?');">📤 Send Emails Now</button>
-            {% else %}
-                <button type="submit" name="send_emails" class="btn btn-danger" disabled>📤 Send Emails (Outlook not available)</button>
-            {% endif %}
         </div>
     </form>
     

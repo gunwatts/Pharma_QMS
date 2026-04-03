@@ -20,6 +20,7 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 from datetime import date # Ensure datetime is imported
 import re
 import os
+import logging
 from django.shortcuts import redirect
 from .auto_sync import _get_last_sync_date, auto_sync_qms_from_excel_core
 from django.conf import settings
@@ -32,6 +33,8 @@ from rest_framework.response import Response
 from .serializers import QMSSerializer, ActionPlanSerializer, DepartmentSerializer
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+
+logger = logging.getLogger(__name__)
 
 # Outlook COM import
 try:
@@ -1024,13 +1027,30 @@ def department_email_sender(request):
             messages.error(request, 'Outlook COM library not available. Please install pywin32.')
             return redirect('department_email_sender')
         
+        import pythoncom
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Initialize COM properly
         try:
-            # Initialize Outlook
-            outlook = win32com.client.GetObject(Class="Outlook.Application")
-        except:
+            pythoncom.CoInitialize()
+        except Exception as e:
+            logger.error(f'COM initialization failed: {str(e)}')
+            messages.error(request, f'COM initialization failed: {str(e)}')
+            return redirect('department_email_sender')
+        
+        # Initialize Outlook with proper error handling
+        outlook = None
+        try:
+            outlook = win32com.client.GetActiveObject("Outlook.Application")
+            logger.info('Got existing Outlook process')
+        except Exception as e:
+            logger.warning(f'Could not get active Outlook: {str(e)}, attempting to create new instance')
             try:
-                outlook = win32com.client.CreateObject("Outlook.Application")
+                outlook = win32com.client.Dispatch("Outlook.Application")
+                logger.info('Created new Outlook instance')
             except Exception as e:
+                logger.error(f'Failed to initialize Outlook: {str(e)}')
                 messages.error(request, f'Failed to initialize Outlook: {str(e)}')
                 return redirect('department_email_sender')
         
@@ -1038,9 +1058,6 @@ def department_email_sender(request):
         errors = []
         
         try:
-            # Get namespace
-            namespace = outlook.GetNamespace("MAPI")
-            
             # Group near-due QMS by department
             department_qms = QMS.objects.filter(
                 status='Open',
@@ -1054,67 +1071,107 @@ def department_email_sender(request):
                     qms_by_dept[dept] = []
                 qms_by_dept[dept].append(qms)
             
+            logger.info(f'Found {len(qms_by_dept)} departments with near-due QMS')
+            
             # Send email for each department
             for dept_code, qms_list in qms_by_dept.items():
-                config = DepartmentEmailConfig.objects.filter(department_code=dept_code).first()
-                if not config or not config.get_to_emails():
-                    continue
-                
-                to_emails = config.get_to_emails()
-                cc_emails = config.get_cc_emails()
-                
-                # Create HTML table for QMS data
-                html_table = '<table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%;">'
-                html_table += '<tr style="background-color: #4F81BD; color: white;"><th>QMS No</th><th>Type</th><th>Target Date</th><th>Description</th><th>Status</th></tr>'
-                
-                for qms in qms_list:
-                    due_status = "Overdue" if qms.target_date < today else "Due Soon"
-                    is_table_row = False
-                    if due_status == "Overdue":
-                        continue # Skip overdue in email, only include due soon
-                    is_table_row = True
-                    html_table += f'<tr><td>{qms.qms_number}</td><td>{qms.get_type_display()}</td><td>{qms.target_date.strftime("%d-%b-%Y")}</td><td>{qms.description}</td><td>{due_status}</td></tr>'
-                if not is_table_row:
-                    html_table += '<tr><td colspan="5" style="text-align: center;">No QMS due within the next 7 days Refer above link for Other pending activities.</td></tr>'
-                html_table += '</table>'
-                
-                # Create mail item
-                mail_item = outlook.CreateItem(0)  # 0 = olMailItem
-                mail_item.Subject = f"Near Due QMS Notification - {dict(QMS.DEPARTMENT_CHOICES).get(dept_code)} Department"
-                
-                # Set recipients
-                recipients = mail_item.Recipients
-                for email in to_emails:
-                    recipients.Add(email)
-                
-                for email in cc_emails:
-                    recipients.Add(email)
-                    recipients.Item(len(recipients)).Type = 2  # 2 = olCC
-                
-                # Build HTML body
-                body_html = f"""<html><body>
-<p>Dear Team,</p>
-<p>The following QMS records are due within the next 7 days:</p>
-<p><style>Note: </style> For Other QMS pending activities refer Link : <a href="https://sekhmetpharmaventures-my.sharepoint.com/:f:/g/personal/ganapathi_polisetti_sekhmetpharma_com/IgAUCTEAzYiuSo4v7faDLZqsAeun4OAeBqh2qhXU-9V2-F4?e=asHz8j">QMS</a></p>
-{html_table}
-<p><br/>Please take necessary action to ensure timely completion.</p>
-<p>Regards,<br/>QMS System</p>
+                try:
+                    config = DepartmentEmailConfig.objects.filter(department_code=dept_code).first()
+                    if not config or not config.get_to_emails():
+                        logger.warning(f'No email config for department {dept_code}')
+                        continue
+                    
+                    # Get email addresses (already parsed as lists by get_to_emails() and get_cc_emails())
+                    to_emails = config.get_to_emails()
+                    cc_emails = config.get_cc_emails()
+                    
+                    logger.info(f'Department {dept_code}: TO={to_emails}, CC={cc_emails}')
+                    
+                    # Build QMS table with proper row tracking
+                    html_table = '<table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: \'Times New Roman\', Times, serif; font-size: 11pt;">'
+                    html_table += '<tr style="background-color: #4F81BD; color: white; font-family: \'Times New Roman\', Times, serif; font-size: 11pt; font-weight: bold;"><th>QMS No</th><th>Type</th><th>Target Date</th><th>Description</th><th>Status</th></tr>'
+                    
+                    has_due_soon_rows = False
+                    for qms in qms_list:
+                        due_status = "Overdue" if qms.target_date < today else "Due Soon"
+                        if due_status == "Overdue":
+                            continue  # Skip overdue in email, only include due soon
+                        
+                        html_table += f'<tr style="font-family: \'Times New Roman\', Times, serif; font-size: 11pt;"><td>{qms.qms_number}</td><td>{qms.get_type_display()}</td><td>{qms.target_date.strftime("%d-%b-%Y")}</td><td>{qms.description}</td><td>{due_status}</td></tr>'
+                        has_due_soon_rows = True
+                    
+                    if not has_due_soon_rows:
+                        html_table += '<tr style="font-family: \'Times New Roman\', Times, serif; font-size: 11pt;"><td colspan="5" style="text-align: center;">No QMS due within the next 7 days. Refer above link for other pending activities.</td></tr>'
+                    
+                    html_table += '</table>'
+                    
+                    # Create mail item
+                    mail_item = outlook.CreateItem(0)  # 0 = olMailItem
+                    mail_item.Subject = f"Near Due QMS Notification - {dict(QMS.DEPARTMENT_CHOICES).get(dept_code)} Department"
+                    
+                    # Add TO recipients
+                    recipients = mail_item.Recipients
+                    for email in to_emails:
+                        try:
+                            recipients.Add(email)
+                            logger.info(f'Added TO recipient: {email}')
+                        except Exception as e:
+                            logger.error(f'Failed to add TO recipient {email}: {str(e)}')
+                            errors.append(f'Failed to add TO recipient {email}: {str(e)}')
+                    
+                    # Add CC recipients
+                    for email in cc_emails:
+                        try:
+                            rec = recipients.Add(email)
+                            rec.Type = 2  # 2 = olCC
+                            logger.info(f'Added CC recipient: {email}')
+                        except Exception as e:
+                            logger.error(f'Failed to add CC recipient {email}: {str(e)}')
+                            errors.append(f'Failed to add CC recipient {email}: {str(e)}')
+                    
+                    # Build HTML body with Times New Roman, Font 12
+                    body_html = f"""<html><body style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;">
+<p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;">Dear Team,</p>
+<p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;">The following QMS records are due within the next 7 days:</p>
+<p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;"><strong>Note:</strong> For Other QMS pending activities refer Link : <a href="https://sekhmetpharmaventures-my.sharepoint.com/:f:/g/personal/ganapathi_polisetti_sekhmetpharma_com/IgAUCTEAzYiuSo4v7faDLZqsAeun4OAeBqh2qhXU-9V2-F4?e=asHz8j">QMS</a></p>
+<div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;">{html_table}</div>
+<p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;"><br/>Please take necessary action to ensure timely completion.</p>
+<p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;">Regards,<br/>QMS System</p>
 </body></html>"""
-                
-                mail_item.HTMLBody = body_html
-                mail_item.BodyFormat = 2  # 2 = olFormatHTML
-                
-                # Send email
-                mail_item.Send()
-                email_sent_count += 1
+                    
+                    mail_item.HTMLBody = body_html
+                    mail_item.BodyFormat = 2  # 2 = olFormatHTML
+                    
+                    # Send email
+                    mail_item.Send()
+                    email_sent_count += 1
+                    logger.info(f'Successfully sent email for department {dept_code}')
+                    messages.success(request, f'Email sent for {dict(QMS.DEPARTMENT_CHOICES).get(dept_code)} department')
+                    
+                except Exception as e:
+                    logger.error(f'Error processing department {dept_code}: {str(e)}', exc_info=True)
+                    errors.append(f'Error for department {dept_code}: {str(e)}')
+                    messages.error(request, f'Error for department {dept_code}: {str(e)}')
             
             if email_sent_count > 0:
                 messages.success(request, f'Successfully sent {email_sent_count} email(s).')
             else:
                 messages.warning(request, 'No near-due QMS found or no email configurations available.')
+            
+            if errors:
+                for error in errors:
+                    logger.error(f'Email sending error: {error}')
+                    messages.warning(request, f'Issue: {error}')
         
         except Exception as e:
-            messages.error(request, f'Error sending emails: {str(e)}')
+            logger.error(f'Fatal error in email sending: {str(e)}', exc_info=True)
+            messages.error(request, f'Fatal error sending emails: {str(e)}')
+        
+        finally:
+            try:
+                pythoncom.CoUninitialize()
+            except:
+                pass
         
         return redirect('department_email_sender')
     
