@@ -25,11 +25,8 @@ class QMSCrossFilter {
             involvedDepartment: []  // Multi-select for involved_departments
         };
         
-        // ===== CONFIG (Use global window config if available) =====
+        // ===== CONFIG (Use pre-loaded data from view, not API) =====
         this.config = {
-            apiUrl: (typeof window.QMS_CONFIG !== 'undefined' && window.QMS_CONFIG.apiUrl) 
-                ? window.QMS_CONFIG.apiUrl 
-                : '/api/qms/',  // Correct default path based on Django URL config
             chartTimeout: 500,
             ...config
         };
@@ -127,26 +124,24 @@ class QMSCrossFilter {
     }
 
     /**
-     * Fetch all QMS data from API
+     * Fetch all QMS data from pre-loaded view data (NOT from API)
      */
     async fetchData() {
         try {
-            console.log(`[QMS Cross-Filter] Fetching from: ${this.config.apiUrl}`);
-            const response = await fetch(this.config.apiUrl);
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[QMS Cross-Filter] HTTP ${response.status}: ${errorText}`);
-                throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            // Use pre-filtered data from Django view instead of API
+            if (typeof window.QMS_CONFIG !== 'undefined' && window.QMS_CONFIG.qmsData) {
+                console.log('[QMS Cross-Filter] Using pre-loaded data from view');
+                this.allData = window.QMS_CONFIG.qmsData;
+            } else {
+                throw new Error('QMS data not found in window.QMS_CONFIG.qmsData. Make sure qms_list_json is passed from Django view.');
             }
             
-            this.allData = await response.json();
             this.filteredData = [...this.allData];
             
-            console.log(`[QMS Cross-Filter] Loaded ${this.allData.length} QMS records`);
+            console.log(`[QMS Cross-Filter] Loaded ${this.allData.length} QMS records from view`);
             
             if (this.allData.length === 0) {
-                console.warn('[QMS Cross-Filter] Warning: API returned empty data');
+                console.warn('[QMS Cross-Filter] Warning: View returned empty data');
             }
             
             // Log first record structure to verify fields
@@ -156,8 +151,7 @@ class QMSCrossFilter {
                 console.log('[QMS Cross-Filter] Review on sample:', this.allData[0].review_on);
             }
         } catch (error) {
-            console.error('[QMS Cross-Filter] Failed to fetch data:', error);
-            console.error('[QMS Cross-Filter] Attempted URL:', this.config.apiUrl);
+            console.error('[QMS Cross-Filter] Failed to load data:', error);
             throw error;
         }
     }

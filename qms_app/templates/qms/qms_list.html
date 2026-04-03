@@ -133,6 +133,25 @@
     #qmsTable thead th {
         background-color: #212529; color: white;
         padding: 12px; border: 1px solid #333; text-transform: uppercase; font-size: 13px;
+        cursor: pointer; user-select: none; position: relative;
+    }
+    #qmsTable thead th:hover {
+        background-color: #343a40;
+        text-decoration: underline;
+    }
+    #qmsTable thead th::after {
+        content: '';
+        display: inline-block;
+        margin-left: 6px;
+        opacity: 0.3;
+    }
+    #qmsTable thead th.asc::after {
+        content: '▲';
+        opacity: 1;
+    }
+    #qmsTable thead th.desc::after {
+        content: '▼';
+        opacity: 1;
     }
     
     #qmsTable tbody td { vertical-align: top; padding: 0 !important; border: 1px solid #dee2e6; }
@@ -180,10 +199,11 @@
 {% block content %}
 <div class="container-fluid py-2 px-2">
     
-    <!-- Configuration: API URLs & Constants -->
+    <!-- Configuration: Filtered QMS Data & Constants -->
     <script>
         window.QMS_CONFIG = {
-            apiUrl: '{% url "qms-api" %}' || '/api/qms/',  // Fallback if URL tag fails
+            // Use pre-filtered data from view instead of API (API is for Power BI only)
+            qmsData: {{ qms_list_json|safe }},
             updateInlineUrl: function(pk) {
                 return ('{% url "qms_update_inline" 99999 %}' || '/qms/update-inline/99999/').replace('99999', pk);
             },
@@ -194,7 +214,7 @@
         };
         
         // Debug: Log the config for troubleshooting
-        console.log('[QMS Config] Initialized:', window.QMS_CONFIG);
+        console.log('[QMS Config] Initialized with', window.QMS_CONFIG.qmsData.length, 'filtered QMS records');
     </script>
     
     <!-- MASTER FILTER SECTION -->
@@ -305,15 +325,18 @@
 
     <!-- TABLE AREA -->
     <div class="bg-white shadow-sm border rounded" style="overflow-x: auto;">
+        <div style="background-color: #f8f9fa; padding: 8px 12px; border-bottom: 1px solid #dee2e6; font-size: 12px; color: #666;">
+            💡 <strong>Tip:</strong> Click column headers to sort. Type in the row below to search within columns.
+        </div>
         <table id="qmsTable" class="table m-0" style="min-width: 100%;">
             <thead>
                 <tr>
-                    <th width="6%">QMS No.</th>
-                    <th width="16%">Description</th>
-                    <th width="16%">Background</th>
-                    <th width="20%">Remarks (Multi-line)</th>
-                    <th width="10%">Target Date</th>
-                    <th width="10%">Review On</th>
+                    <th width="6%" title="Click to sort by QMS No.">QMS No.</th>
+                    <th width="16%" title="Click to sort by Description">Description</th>
+                    <th width="16%" title="Click to sort by Background">Background</th>
+                    <th width="20%" title="Click to sort by Remarks">Remarks (Multi-line)</th>
+                    <th width="10%" title="Click to sort by Target Date">Target Date</th>
+                    <th width="10%" title="Click to sort by Review On">Review On</th>
                     <th style="display:none;">DeptHidden</th>
                     <th style="display:none;">StatusHidden</th>
                     <th style="display:none;">SortOrder</th>
@@ -343,6 +366,8 @@
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<!-- DataTables DateTime Sorting Plugin -->
+<script src="https://cdn.datatables.net/plug-ins/1.13.6/sorting/datetime-moment.js"></script>
 <script src="{% static 'js/qms_cross_filter.js' %}"></script>
 
 <!-- Register Chart.js Datalabels Plugin -->
@@ -472,14 +497,40 @@ $(document).ready(function() {
         console.log('[DataTable] Initializing DataTable...');
         
         try {
+            // Define custom sorting for dates (YYYY-MM-DD format)
+            $.fn.dataTable.ext.type.order['date-iso-pre'] = function(date) {
+                return Date.parse(date) || 0;
+            };
+            
             const table = $('#qmsTable').DataTable({
                 "pageLength": 25,
                 "dom": 'rtip',
-                "order": [[4, 'asc']], // Sort by target date
-                "columnDefs": [{ 
-                    "targets": [6, 7, 8, 9],
-                    "visible": false 
-                }],
+                "order": [[4, 'asc']], // Initial sort by Target Date
+                "columnDefs": [
+                    // Hide extra columns
+                    { 
+                        "targets": [6, 7, 8, 9],
+                        "visible": false,
+                        "orderable": false
+                    },
+                    // Target Date (column 4) - enable sorting with date type
+                    {
+                        "targets": [4],
+                        "type": "date-iso",
+                        "orderable": true
+                    },
+                    // Review On (column 5) - enable sorting with date type
+                    {
+                        "targets": [5],
+                        "type": "date-iso",
+                        "orderable": true
+                    },
+                    // Enable sorting on QMS No., Description, Background, Remarks
+                    {
+                        "targets": [0, 1, 2, 3],
+                        "orderable": true
+                    }
+                ],
                 "autoWidth": false,
                 "drawCallback": function() {
                     console.log('[DataTable] Draw callback - expanding textareas...');
@@ -495,12 +546,36 @@ $(document).ready(function() {
                 }
             });
             
-            console.log('[DataTable] ✓ DataTable initialized successfully');
+            console.log('[DataTable] ✓ DataTable initialized with sortable columns');
+            
+            // Log sortable columns for debugging
+            console.log('[DataTable] Target Date (Col 4) sortable:', table.settings()[0].aoColumns[4].bSortable);
+            console.log('[DataTable] Review On (Col 5) sortable:', table.settings()[0].aoColumns[5].bSortable);
             
             // ===== COLUMN-SPECIFIC SEARCH (HEADER ROW) =====
             $('.col-search').on('keyup', function() {
                 const idx = $(this).parent().index();
                 table.column(idx).search(this.value).draw();
+            });
+            
+            // ===== ADD CLICK HANDLER FOR HEADER SORTING =====
+            $('#qmsTable thead tr:first th').on('click', function(e) {
+                // Don't sort if clicking on a search input
+                if (e.target.tagName === 'INPUT') return;
+                
+                const colIdx = $(this).index();
+                const column = table.column(colIdx);
+                const currentOrder = column.order();
+                
+                console.log('[DataTable] Header click - Column:', colIdx, 'Current order:', currentOrder);
+                
+                if (column.order() === 'asc') {
+                    column.order('desc').draw();
+                    console.log('[DataTable] Sorting', colIdx, 'DESC');
+                } else {
+                    column.order('asc').draw();
+                    console.log('[DataTable] Sorting', colIdx, 'ASC');
+                }
             });
             
             // ===== AUTO-EXPAND TEXTAREA =====

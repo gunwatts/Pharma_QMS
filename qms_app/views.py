@@ -168,6 +168,9 @@ def qms_list(request):
     # We use QMS.DEPARTMENT_CHOICES directly to ensure all possible options are listed.
     qms_departments = QMS.DEPARTMENT_CHOICES
 
+    # Serialize the filtered QMS data for frontend use (instead of API call)
+    qms_list_json = json.dumps(QMSSerializer(qms_list_data, many=True).data)
+
     # Aggregate QMS count by department for the chart
     department_counts_query = QMS.objects.values('department').annotate(count=Count('department'))
 
@@ -193,6 +196,7 @@ def qms_list(request):
 
     context = {
         'qms_list': qms_list_data,
+        'qms_list_json': qms_list_json,     # Pass filtered QMS data as JSON to frontend
         'qms_departments': qms_departments, # Pass all department choices for dropdown
         'qms_data_json': qms_data_json,     # Pass chart data as JSON
         'today': today,
