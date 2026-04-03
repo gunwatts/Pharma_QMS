@@ -73,5 +73,8 @@ urlpatterns = [
     # QMS Report
     path('qms-report/form/', reports.qms_report_form, name='qms_report_form'),
     path('qms-report/', reports.generate_professional_report, name='qms_report_generate'),
+    
+    # Department Email Sender
+    path('email/sender/', views.department_email_sender, name='department_email_sender'),
 ]
 

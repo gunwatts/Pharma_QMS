@@ -157,3 +157,32 @@ class UpdateRequest(models.Model):
 
     def __str__(self):
         return f"Request for {self.qms_number} by {self.owner.username}"
+
+
+class DepartmentEmailConfig(models.Model):
+    """Store email recipients for each department"""
+    department_code = models.CharField(max_length=5, choices=QMS.DEPARTMENT_CHOICES, unique=True)
+    to_emails = models.TextField(help_text="Comma-separated email addresses for 'To' field")
+    cc_emails = models.TextField(blank=True, help_text="Comma-separated email addresses for 'CC' field")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Department Email Config"
+        verbose_name_plural = "Department Email Configs"
+
+    def __str__(self):
+        dept_name = dict(QMS.DEPARTMENT_CHOICES).get(self.department_code, self.department_code)
+        return f"Email Config - {dept_name}"
+
+    def get_department_display(self):
+        """Return the display name of the department"""
+        return dict(QMS.DEPARTMENT_CHOICES).get(self.department_code, self.department_code)
+
+    def get_to_emails(self):
+        """Return list of 'To' emails"""
+        return [e.strip() for e in self.to_emails.split(',') if e.strip()]
+
+    def get_cc_emails(self):
+        """Return list of 'CC' emails"""
+        return [e.strip() for e in self.cc_emails.split(',') if e.strip()]

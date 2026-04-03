@@ -1,0 +1,291 @@
+{% extends 'qms/base.html' %}
+{% load static %}
+
+{% block title %}Department Email Sender{% endblock %}
+
+{% block content %}
+<style>
+    .email-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .email-config-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+    }
+    
+    .email-config-table thead {
+        background-color: #4F81BD;
+        color: white;
+    }
+    
+    .email-config-table th, .email-config-table td {
+        border: 1px solid #ddd;
+        padding: 12px;
+        text-align: left;
+    }
+    
+    .email-config-table tbody tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+    
+    .email-config-table input[type="text"], .email-config-table textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+    }
+    
+    .email-config-table textarea {
+        min-height: 60px;
+        resize: vertical;
+    }
+    
+    .qms-preview-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        background-color: white;
+    }
+    
+    .qms-preview-table thead {
+        background-color: #4F81BD;
+        color: white;
+    }
+    
+    .qms-preview-table th, .qms-preview-table td {
+        border: 1px solid #ddd;
+        padding: 10px;
+        text-align: left;
+    }
+    
+    .qms-preview-table tbody tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+    
+    .qms-preview-table .overdue {
+        background-color: #ffcccc;
+        font-weight: bold;
+    }
+    
+    .qms-preview-table .due-soon {
+        background-color: #ffffcc;
+    }
+    
+    .button-group {
+        margin: 20px 0;
+        display: flex;
+        gap: 10px;
+    }
+    
+    .btn {
+        display: inline-block;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        background-color: #4F81BD;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    
+    .btn:hover {
+        background-color: #3d5a8c;
+    }
+    
+    .btn-danger {
+        background-color: #d32f2f;
+    }
+    
+    .btn-danger:hover {
+        background-color: #c62828;
+    }
+    
+    .alert {
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 4px;
+        border-left: 4px solid;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        border-left-color: #28a745;
+        color: #155724;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        border-left-color: #f5c6cb;
+        color: #721c24;
+    }
+    
+    .alert-warning {
+        background-color: #fff3cd;
+        border-left-color: #ffc107;
+        color: #856404;
+    }
+    
+    .section-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #4F81BD;
+        margin-top: 30px;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #4F81BD;
+        padding-bottom: 10px;
+    }
+    
+    .info-box {
+        background-color: #e8f4f8;
+        border-left: 4px solid #4F81BD;
+        padding: 15px;
+        margin: 15px 0;
+        border-radius: 4px;
+    }
+    
+    .no-data {
+        background-color: #f0f0f0;
+        padding: 20px;
+        text-align: center;
+        border-radius: 4px;
+        color: #666;
+    }
+</style>
+
+<div class="email-container">
+    <h1>Department Email Sender</h1>
+    
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    {% if not outlook_available %}
+        <div class="alert alert-warning">
+            <strong>Warning:</strong> Outlook COM library is not installed. Install pywin32 to use email functionality.
+            <br><code>pip install pywin32</code>
+        </div>
+    {% endif %}
+    
+    <div class="info-box">
+        <strong>📧 How to Use:</strong>
+        <br>1. Edit the email addresses for each department (To and CC fields)
+        <br>2. Click "Save Configuration" to save the settings
+        <br>3. View the preview of near-due QMS below
+        <br>4. Click "Send Emails" to send notifications to all departments with near-due QMS
+    </div>
+    
+    <!-- Email Configuration Section -->
+    <div class="section-title">📝 Email Configuration</div>
+    
+    <form method="POST">
+        {% csrf_token %}
+        
+        <table class="email-config-table">
+            <thead>
+                <tr>
+                    <th>Department</th>
+                    <th>To Email(s) <small style="color: #ccc;">(comma-separated)</small></th>
+                    <th>CC Email(s) <small style="color: #ccc;">(comma-separated, optional)</small></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for config in email_configs %}
+                    <tr>
+                        <td><strong>{{ config.get_department_display }}</strong></td>
+                        <td>
+                            <textarea name="to_emails_{{ config.id }}" placeholder="e.g. john@company.com, jane@company.com">{{ config.to_emails }}</textarea>
+                        </td>
+                        <td>
+                            <textarea name="cc_emails_{{ config.id }}" placeholder="e.g. manager@company.com">{{ config.cc_emails }}</textarea>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <div class="button-group">
+            <button type="submit" name="save_config" class="btn">💾 Save Configuration</button>
+            {% if outlook_available %}
+                <button type="submit" name="send_emails" class="btn" onclick="return confirm('Are you sure you want to send emails to all departments with near-due QMS?');">📤 Send Emails Now</button>
+            {% else %}
+                <button type="submit" name="send_emails" class="btn btn-danger" disabled>📤 Send Emails (Outlook not available)</button>
+            {% endif %}
+        </div>
+    </form>
+    
+    <!-- Near-Due QMS Preview Section -->
+    <div class="section-title">📊 Near-Due QMS Preview (Next 7 Days +  Overdue)</div>
+    
+    {% if qms_by_dept %}
+        {% for dept_name, qms_list in qms_by_dept.items %}
+            <h3 style="color: #4F81BD; margin-top: 20px;">🏢 {{ dept_name }} ({{ qms_list|length }} QMS)</h3>
+            
+            <table class="qms-preview-table">
+                <thead>
+                    <tr>
+                        <th>QMS No</th>
+                        <th>Type</th>
+                        <th>Target Date</th>
+                        <th>Description</th>
+                        <th>Status</th>
+                        <th>Days Left</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for qms in qms_list %}
+                        {% with days_left=qms.target_date|date:"U"|add:"-86400" %}
+                            {% if qms.target_date < today %}
+                                <tr class="overdue">
+                                    <td>{{ qms.qms_number }}</td>
+                                    <td>{{ qms.get_type_display }}</td>
+                                    <td>{{ qms.target_date|date:"d-M-Y" }}</td>
+                                    <td>{{ qms.description }}</td>
+                                    <td>⚠️ OVERDUE</td>
+                                    <td style="color: red; font-weight: bold;">{{ qms.target_date|timesince:today }} ago</td>
+                                </tr>
+                            {% else %}
+                                <tr class="due-soon">
+                                    <td>{{ qms.qms_number }}</td>
+                                    <td>{{ qms.get_type_display }}</td>
+                                    <td>{{ qms.target_date|date:"d-M-Y" }}</td>
+                                    <td>{{ qms.description }}</td>
+                                    <td>⏰ DUE SOON</td>
+                                    <td>{{ today|timesince:qms.target_date }} left</td>
+                                </tr>
+                            {% endif %}
+                        {% endwith %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endfor %}
+    {% else %}
+        <div class="no-data">
+            ✅ No near-due or overdue QMS found. All systems are on track!
+        </div>
+    {% endif %}
+    
+    <div class="info-box" style="margin-top: 30px;">
+        <strong>ℹ️ Note:</strong> This page displays QMS that are either overdue or due within the next 7 days. Use this preview to verify which QMS will trigger email notifications when you click "Send Emails Now".
+    </div>
+</div>
+
+<script>
+    // Store department dropdown value for quick editing
+    document.querySelectorAll('textarea').forEach(textarea => {
+        textarea.addEventListener('change', function() {
+            console.log('Email config changed');
+        });
+    });
+</script>
+{% endblock %}

@@ -1,7 +1,7 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .models import QMS, ActionPlan, MiniQMS, Note, MiniAction, UpdateRequest, Department
+from .models import QMS, ActionPlan, MiniQMS, Note, MiniAction, UpdateRequest, Department, DepartmentEmailConfig
 from .forms import QMSForm, ActionPlanForm, MiniQMSForm, NoteForm, MiniActionForm, UserCreationForm, UpdateRequestForm
 from django.contrib.auth.models import User, Group
 from django.db.models import Q, F
@@ -32,6 +32,14 @@ from rest_framework.response import Response
 from .serializers import QMSSerializer, ActionPlanSerializer, DepartmentSerializer
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+
+# Outlook COM import
+try:
+    import win32com.client
+    OUTLOOK_AVAILABLE = True
+except ImportError:
+    OUTLOOK_AVAILABLE = False
+
 # --- Dashboard View (Updated for Chart & Layout) ---
 
 @login_required
@@ -977,3 +985,157 @@ def qms_update_inline(request, pk):
         
     qms.save()
     return JsonResponse({'status': 'success'})
+
+
+# --- Department Email Configuration & Sending ---
+
+@login_required
+@admin_required
+def department_email_sender(request):
+    """
+    Manage department email configs and send near-due QMS notifications
+    """
+    today = timezone.now().date()
+    near_due_date = today + timedelta(days=7)
+    
+    # Initialize email configs for all departments that don't have one yet
+    for dept_code, dept_name in QMS.DEPARTMENT_CHOICES:
+        DepartmentEmailConfig.objects.get_or_create(department_code=dept_code)
+    
+    email_configs = DepartmentEmailConfig.objects.all().order_by('department_code')
+    
+    # Handle POST - Save email configs
+    if request.method == 'POST' and 'save_config' in request.POST:
+        for config in email_configs:
+            to_emails = request.POST.get(f'to_emails_{config.id}', '').strip()
+            cc_emails = request.POST.get(f'cc_emails_{config.id}', '').strip()
+            
+            if to_emails or cc_emails:
+                config.to_emails = to_emails
+                config.cc_emails = cc_emails
+                config.save()
+        
+        messages.success(request, 'Email configurations saved successfully.')
+        return redirect('department_email_sender')
+    
+    # Handle POST - Send emails
+    if request.method == 'POST' and 'send_emails' in request.POST:
+        if not OUTLOOK_AVAILABLE:
+            messages.error(request, 'Outlook COM library not available. Please install pywin32.')
+            return redirect('department_email_sender')
+        
+        try:
+            # Initialize Outlook
+            outlook = win32com.client.GetObject(Class="Outlook.Application")
+        except:
+            try:
+                outlook = win32com.client.CreateObject("Outlook.Application")
+            except Exception as e:
+                messages.error(request, f'Failed to initialize Outlook: {str(e)}')
+                return redirect('department_email_sender')
+        
+        email_sent_count = 0
+        errors = []
+        
+        try:
+            # Get namespace
+            namespace = outlook.GetNamespace("MAPI")
+            
+            # Group near-due QMS by department
+            department_qms = QMS.objects.filter(
+                status='Open',
+                target_date__lte=near_due_date
+            ).order_by('department', 'target_date')
+            
+            qms_by_dept = {}
+            for qms in department_qms:
+                dept = qms.department
+                if dept not in qms_by_dept:
+                    qms_by_dept[dept] = []
+                qms_by_dept[dept].append(qms)
+            
+            # Send email for each department
+            for dept_code, qms_list in qms_by_dept.items():
+                config = DepartmentEmailConfig.objects.filter(department_code=dept_code).first()
+                if not config or not config.get_to_emails():
+                    continue
+                
+                to_emails = config.get_to_emails()
+                cc_emails = config.get_cc_emails()
+                
+                # Create HTML table for QMS data
+                html_table = '<table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%;">'
+                html_table += '<tr style="background-color: #4F81BD; color: white;"><th>QMS No</th><th>Type</th><th>Target Date</th><th>Description</th><th>Status</th></tr>'
+                
+                for qms in qms_list:
+                    due_status = "Overdue" if qms.target_date < today else "Due Soon"
+                    is_table_row = False
+                    if due_status == "Overdue":
+                        continue # Skip overdue in email, only include due soon
+                    is_table_row = True
+                    html_table += f'<tr><td>{qms.qms_number}</td><td>{qms.get_type_display()}</td><td>{qms.target_date.strftime("%d-%b-%Y")}</td><td>{qms.description}</td><td>{due_status}</td></tr>'
+                if not is_table_row:
+                    html_table += '<tr><td colspan="5" style="text-align: center;">No QMS due within the next 7 days Refer above link for Other pending activities.</td></tr>'
+                html_table += '</table>'
+                
+                # Create mail item
+                mail_item = outlook.CreateItem(0)  # 0 = olMailItem
+                mail_item.Subject = f"Near Due QMS Notification - {dict(QMS.DEPARTMENT_CHOICES).get(dept_code)} Department"
+                
+                # Set recipients
+                recipients = mail_item.Recipients
+                for email in to_emails:
+                    recipients.Add(email)
+                
+                for email in cc_emails:
+                    recipients.Add(email)
+                    recipients.Item(len(recipients)).Type = 2  # 2 = olCC
+                
+                # Build HTML body
+                body_html = f"""<html><body>
+<p>Dear Team,</p>
+<p>The following QMS records are due within the next 7 days:</p>
+<p><style>Note: </style> For Other QMS pending activities refer Link : <a href="https://sekhmetpharmaventures-my.sharepoint.com/:f:/g/personal/ganapathi_polisetti_sekhmetpharma_com/IgAUCTEAzYiuSo4v7faDLZqsAeun4OAeBqh2qhXU-9V2-F4?e=asHz8j">QMS</a></p>
+{html_table}
+<p><br/>Please take necessary action to ensure timely completion.</p>
+<p>Regards,<br/>QMS System</p>
+</body></html>"""
+                
+                mail_item.HTMLBody = body_html
+                mail_item.BodyFormat = 2  # 2 = olFormatHTML
+                
+                # Send email
+                mail_item.Send()
+                email_sent_count += 1
+            
+            if email_sent_count > 0:
+                messages.success(request, f'Successfully sent {email_sent_count} email(s).')
+            else:
+                messages.warning(request, 'No near-due QMS found or no email configurations available.')
+        
+        except Exception as e:
+            messages.error(request, f'Error sending emails: {str(e)}')
+        
+        return redirect('department_email_sender')
+    
+    # Get near-due QMS grouped by department for preview
+    department_qms = QMS.objects.filter(
+        status='Open',
+        target_date__lte=near_due_date
+    ).order_by('department', 'target_date')
+    
+    qms_by_dept = {}
+    for qms in department_qms:
+        dept_name = qms.get_department_display()
+        if dept_name not in qms_by_dept:
+            qms_by_dept[dept_name] = []
+        qms_by_dept[dept_name].append(qms)
+    
+    context = {
+        'email_configs': email_configs,
+        'qms_by_dept': qms_by_dept,
+        'outlook_available': OUTLOOK_AVAILABLE,
+        'today': today,
+        'near_due_date': near_due_date,
+    }
+    return render(request, 'qms/department_email_sender.html', context)
