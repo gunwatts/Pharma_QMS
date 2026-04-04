@@ -1,6 +1,7 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.urls import reverse
 from .models import QMS, ActionPlan, MiniQMS, Note, MiniAction, UpdateRequest, Department, DepartmentEmailConfig
 from .forms import QMSForm, ActionPlanForm, MiniQMSForm, NoteForm, MiniActionForm, UserCreationForm, UpdateRequestForm
 from django.contrib.auth.models import User, Group
@@ -1082,8 +1083,8 @@ def department_email_sender(request):
                         continue
                     
                     # Get email addresses (already parsed as lists by get_to_emails() and get_cc_emails())
-                    to_emails = config.get_to_emails()
-                    cc_emails = config.get_cc_emails()
+                    to_emails = config.get_to_emails() or []
+                    cc_emails = config.get_cc_emails() or []
                     
                     logger.info(f'Department {dept_code}: TO={to_emails}, CC={cc_emails}')
                     
@@ -1128,12 +1129,12 @@ def department_email_sender(request):
                         except Exception as e:
                             logger.error(f'Failed to add CC recipient {email}: {str(e)}')
                             errors.append(f'Failed to add CC recipient {email}: {str(e)}')
-                    
+                    qms_url = request.build_absolute_uri(reverse('export_qms_to_excel', args=[dept_code]))
                     # Build HTML body with Times New Roman, Font 12
                     body_html = f"""<html><body style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;">
 <p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;">Dear Team,</p>
 <p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;">The following QMS records are due within the next 7 days:</p>
-<p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;"><strong>Note:</strong> For Other QMS pending activities refer Link : <a href="https://sekhmetpharmaventures-my.sharepoint.com/:f:/g/personal/ganapathi_polisetti_sekhmetpharma_com/IgAUCTEAzYiuSo4v7faDLZqsAeun4OAeBqh2qhXU-9V2-F4?e=asHz8j">QMS</a></p>
+<p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;"><strong>Note:</strong> For Other QMS pending activities refer Link : <a href="{qms_url}">QMS</a></p>
 <div style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;">{html_table}</div>
 <p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;"><br/>Please take necessary action to ensure timely completion.</p>
 <p style="font-family: 'Times New Roman', Times, serif; font-size: 12pt;">Regards,<br/>QMS System</p>
@@ -1143,7 +1144,7 @@ def department_email_sender(request):
                     mail_item.BodyFormat = 2  # 2 = olFormatHTML
                     
                     # Send email
-                    mail_item.Send()
+                    mail_item.Save()
                     email_sent_count += 1
                     logger.info(f'Successfully sent email for department {dept_code}')
                     messages.success(request, f'Email sent for {dict(QMS.DEPARTMENT_CHOICES).get(dept_code)} department')
