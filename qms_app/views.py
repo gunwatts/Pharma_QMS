@@ -1089,7 +1089,7 @@ def department_email_sender(request):
                     
                     # Build QMS table with proper row tracking
                     html_table = '<table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: \'Times New Roman\', Times, serif; font-size: 11pt;">'
-                    html_table += '<tr style="background-color: #4F81BD; color: white; font-family: \'Times New Roman\', Times, serif; font-size: 11pt; font-weight: bold;"><th>QMS No</th><th>Type</th><th>Target Date</th><th>Description</th><th>Status</th></tr>'
+                    html_table += '<tr style="background-color: #4F81BD; color: white; font-family: \'Times New Roman\', Times, serif; font-size: 11pt; font-weight: bold;"><th>QMS No</th><th>Type</th><th>Initiated Date</th><th>Description</th><th>Target Date</th><th>Background</th><th>Remarks</th></tr>'
                     
                     has_due_soon_rows = False
                     for qms in qms_list:
@@ -1097,11 +1097,11 @@ def department_email_sender(request):
                         if due_status == "Overdue":
                             continue  # Skip overdue in email, only include due soon
                         
-                        html_table += f'<tr style="font-family: \'Times New Roman\', Times, serif; font-size: 11pt;"><td>{qms.qms_number}</td><td>{qms.get_type_display()}</td><td>{qms.target_date.strftime("%d-%b-%Y")}</td><td>{qms.description}</td><td>{due_status}</td></tr>'
+                        html_table += f'<tr style="font-family: \'Times New Roman\', Times, serif; font-size: 11pt;"><td>{qms.qms_number}</td><td>{qms.get_type_display()}</td><td>{qms.initiated_date.strftime("%d-%b-%Y")}</td><td>{qms.description}</td><td>{qms.target_date.strftime("%d-%b-%Y")}</td><td>{qms.background}</td><td>{qms.remarks}</td></tr>'
                         has_due_soon_rows = True
                     
                     if not has_due_soon_rows:
-                        html_table += '<tr style="font-family: \'Times New Roman\', Times, serif; font-size: 11pt;"><td colspan="5" style="text-align: center;">No QMS due within the next 7 days. Refer above link for other pending activities.</td></tr>'
+                        html_table += '<tr style="font-family: \'Times New Roman\', Times, serif; font-size: 11pt;"><td colspan="7" style="text-align: center;">No QMS due within the next 7 days. Refer above link for other pending activities.</td></tr>'
                     
                     html_table += '</table>'
                     
