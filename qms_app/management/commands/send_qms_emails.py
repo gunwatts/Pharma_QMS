@@ -110,22 +110,60 @@ class Command(BaseCommand):
                     qms_url = base_url + reverse('export_qms_to_excel', args=[dept_code])
 
                     # Email body
+                    # Email body
                     body_html = f"""
                     <html>
-                    <body style="font-family:'Times New Roman';font-size:12pt;">
+                    <body style="font-family:'Times New Roman'; font-size:12pt;">
+
                     <p>Dear Team,</p>
 
-                    <p>The following QMS records are due within the next 7 days:</p>
+                    <p>
+                    This is an automated notification from the <strong>Quality Management System (QMS)</strong>.
+                    </p>
 
-                    <p><strong>Note:</strong>
-                    For other QMS activities refer:
-                    <a href="{qms_url}">QMS</a></p>
+                    {
+                    """
+                    <p>
+                    The following QMS records are scheduled within the next 7 days and require your immediate attention.
+                    All concerned personnel are instructed to review the details and ensure necessary actions are completed within the defined timelines.
+                    </p>
+
+                    <p>
+                    <strong>Action Required:</strong> Kindly reply to this email with your action plan, including the expected completion date for each applicable QMS item.
+                    </p>
+                    """
+                    if has_rows else
+                    """
+                    <p>
+                    As of now, there are no QMS records due within the next 7 days.
+                    Please Download QMS Excel from the Link below and Complete pending activities as soon as possible.
+                    </p>
+                    """
+                    }
+
+                    <p>
+                    <strong>Reference:</strong> For All Open QMS and other QMS pending activities:
+                    <a href="{qms_url}">Download QMS Excel</a>
+                    </p>
+
+                    <br>
 
                     {html_table}
 
-                    <p>Please take necessary action.</p>
+                    <br>
 
-                    <p>Regards,<br>QMS System</p>
+                    <p>
+                    Adherence to timelines is mandatory to ensure compliance with quality and regulatory requirements.
+                    </p>
+
+                    <br>
+
+                    <p>
+                    Regards,<br>
+                    <strong>Quality Management System (QMS)</strong><br>
+                    (This is a system-generated email. Reply is required for submission of action plans.)
+                    </p>
+
                     </body>
                     </html>
                     """
