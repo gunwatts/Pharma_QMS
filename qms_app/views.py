@@ -172,7 +172,8 @@ def dashboard_final(request):
 @login_required
 def qms_list(request):
     import datetime
-    today = datetime.date.today()
+    from django.utils import timezone
+    today = timezone.localdate()
     soon_date = today + datetime.timedelta(days=7)
     qms_list_data = QMS.objects.filter(status__in=['Open', 'CFT','EM']).order_by('target_date')
 

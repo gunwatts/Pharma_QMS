@@ -211,6 +211,7 @@ class QMSCrossFilter {
      */
     getDaysDifference(date) {
         const today = new Date();
+        today.setHours(0, 0, 0, 0);  // remove time
         const initDate = new Date(date);
         return Math.floor((today - initDate) / (1000 * 60 * 60 * 24));
     }
@@ -318,6 +319,7 @@ class QMSCrossFilter {
             if (filterStatus === 'Overdue') {
                 // Overdue: target_date < today AND status is Open
                 const today = new Date();
+                today.setHours(0, 0, 0, 0);  // remove time
                 const targetDate = new Date(item.target_date);
                 return targetDate < today && item.status === 'Open';
             } else if (filterStatus === 'Review') {
@@ -1512,6 +1514,7 @@ class QMSCrossFilter {
 
     createTableRow(item) {
         const today = new Date();
+        today.setHours(0, 0, 0, 0);  // remove time
         const targetDate = new Date(item.target_date);
         const isOverdue = targetDate < today && item.status === 'Open';
         const overdueClass = isOverdue ? 'overdue-text' : '';
