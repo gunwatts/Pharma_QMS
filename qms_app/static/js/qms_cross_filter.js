@@ -221,7 +221,8 @@ class QMSCrossFilter {
         if (days > 180) return '6_months_plus';
         if (days > 90) return '3_months_plus';
         if (days > 60) return '2_months_plus';
-        return 'less_2_months';
+        if (days > 30) return '1_month_plus';
+        return 'less_1_month';
     }
 
     /**
@@ -1180,38 +1181,51 @@ class QMSCrossFilter {
 
     aggregateByTimeline() {
         console.log('[DEBUG-Aggregate] === aggregateByTimeline START (Power BI Cross-Filter) ===');
-        
-        // Get data filtered by ALL OTHER dimensions (excluding ageRange)
+
         const crossFilteredData = this.getFilteredDataWithoutDimension('ageRange');
         console.log('[DEBUG-Aggregate] Cross-filtered data count:', crossFilteredData.length);
-        
+
         const buckets = {
-            'less_2_months': 0,
+            'less_1_month': 0,
+            '1_month_plus': 0,
             '2_months_plus': 0,
             '3_months_plus': 0,
             '6_months_plus': 0,
             '1_year_plus': 0
         };
-        
-        // Count records by age range from cross-filtered data
+
         crossFilteredData.forEach(item => {
+            if (!item.initiated_date) return;
+
             const days = this.getDaysDifference(item.initiated_date);
             const bucket = this.getAgeRange(days);
-            buckets[bucket]++;
+
+            if (buckets.hasOwnProperty(bucket)) {
+                buckets[bucket]++;
+            }
         });
-        
+
         const labelMap = {
-            'less_2_months': '< 2 Months',
+            'less_1_month': '< 1 Month',
+            '1_month_plus': '1-2 Months',
             '2_months_plus': '2-3 Months',
             '3_months_plus': '3-6 Months',
             '6_months_plus': '6-12 Months',
             '1_year_plus': '> 1 Year'
         };
-        
-        const ageRanges = Object.keys(buckets);
+
+        const ageRanges = [
+            'less_1_month',
+            '1_month_plus',
+            '2_months_plus',
+            '3_months_plus',
+            '6_months_plus',
+            '1_year_plus'
+        ];
+
         const labels = ageRanges.map(k => labelMap[k]);
         const values = ageRanges.map(k => buckets[k]);
-        
+
         return { labels, values, ageRanges };
     }
 
