@@ -8,13 +8,16 @@ class QMSCrossFilter {
         // ===== DATA STORAGE =====
         this.allData = [];
         this.filteredData = [];
-        
+        this.reviewBlankOnly = false;
+        this.reviewToggleBtn = null;
+        this.searchQuery = '';
+
         // ===== KEYBOARD STATE (for shift+click detection) =====
         this.keyboardState = {
             shiftPressed: false,
             ctrlPressed: false
         };
-        
+
         // ===== FILTER STATE =====
         this.activeFilters = {
             department: [],
@@ -24,13 +27,13 @@ class QMSCrossFilter {
             targetMonth: null,  // Format: "YYYY-MM"
             involvedDepartment: []  // Multi-select for involved_departments
         };
-        
+
         // ===== CONFIG (Use pre-loaded data from view, not API) =====
         this.config = {
             chartTimeout: 500,
             ...config
         };
-        
+
         // ===== CHART INSTANCES =====
         this.charts = {
             byDepartment: null,
@@ -40,7 +43,7 @@ class QMSCrossFilter {
             byTargetDate: null,
             byInvolvedDept: null
         };
-        
+
         // ===== UI REFERENCES =====
         this.elements = {
             deptChart: document.getElementById('chartByDepartment'),
@@ -56,7 +59,7 @@ class QMSCrossFilter {
             drillDownBtn: document.getElementById('drillDownBtn'),
             targetDateDrillControls: document.getElementById('targetDateDrillControls')
         };
-        
+
         // ===== DEBOUNCE & CHART UPDATE CONTROL =====
         this.chartDebounceTimer = null;
         this.isInitialized = false;
@@ -68,30 +71,30 @@ class QMSCrossFilter {
     async init() {
         try {
             console.log('[QMS Cross-Filter] Initializing...');
-            
+
             // Check dependencies
             if (typeof Chart === 'undefined') {
                 console.error('[QMS Cross-Filter] ❌ Chart.js not loaded!');
                 throw new Error('Chart.js library not found');
             }
             console.log('[QMS Cross-Filter] ✓ Chart.js loaded');
-            
+
             if (typeof jQuery === 'undefined') {
                 console.error('[QMS Cross-Filter] ❌ jQuery not loaded!');
                 throw new Error('jQuery not found');
             }
             console.log('[QMS Cross-Filter] ✓ jQuery loaded');
-            
+
             // Fetch API data
             console.log('[QMS Cross-Filter] Fetching data...');
             await this.fetchData();
             console.log('[QMS Cross-Filter] ✓ Data fetched:', this.allData.length, 'records');
-            
+
             // Bind events
             console.log('[QMS Cross-Filter] Binding events...');
             this.bindEvents();
             console.log('[QMS Cross-Filter] ✓ Events bound');
-            
+
             // Check if canvas elements exist
             console.log('[QMS Cross-Filter] Checking chart containers...');
             Object.entries(this.elements).forEach(([key, el]) => {
@@ -101,20 +104,20 @@ class QMSCrossFilter {
                     console.warn(`  ⚠️ ${key}: NOT FOUND - charts may not render`);
                 }
             });
-            
+
             // Render charts
             console.log('[QMS Cross-Filter] Rendering charts...');
             this.renderCharts();
             console.log('[QMS Cross-Filter] ✓ Charts rendered');
-            
+
             // Update target date drill button visibility
             this.updateTargetDateDrillButtons();
-            
+
             // Update table
             console.log('[QMS Cross-Filter] Updating table...');
             this.updateTableFromFilters();
             console.log('[QMS Cross-Filter] ✓ Table updated');
-            
+
             this.isInitialized = true;
             console.log('[QMS Cross-Filter] ✓ Initialization complete!');
         } catch (error) {
@@ -131,19 +134,19 @@ class QMSCrossFilter {
             // Use pre-filtered data from Django view instead of API
             if (typeof window.QMS_CONFIG !== 'undefined' && window.QMS_CONFIG.qmsData) {
                 console.log('[QMS Cross-Filter] Using pre-loaded data from view');
-                this.allData = window.QMS_CONFIG.qmsData;
+                this.allData = Array.isArray(window.QMS_CONFIG.qmsData) ? window.QMS_CONFIG.qmsData : [];
             } else {
                 throw new Error('QMS data not found in window.QMS_CONFIG.qmsData. Make sure qms_list_json is passed from Django view.');
             }
-            
+
             this.filteredData = [...this.allData];
-            
+
             console.log(`[QMS Cross-Filter] Loaded ${this.allData.length} QMS records from view`);
-            
+
             if (this.allData.length === 0) {
                 console.warn('[QMS Cross-Filter] Warning: View returned empty data');
             }
-            
+
             // Log first record structure to verify fields
             if (this.allData.length > 0) {
                 console.log('[QMS Cross-Filter] ✓ First record structure:', this.allData[0]);
@@ -170,7 +173,7 @@ class QMSCrossFilter {
                 console.log('[DEBUG-Keyboard] ✓ KEY STATE CHANGED TO:', this.keyboardState);
             }
         });
-        
+
         document.addEventListener('keyup', (e) => {
             const previousState = { ...this.keyboardState };
             this.keyboardState.shiftPressed = false;
@@ -178,12 +181,12 @@ class QMSCrossFilter {
             console.log('[DEBUG-Keyboard] keyup event - key:', e.code, '- ALL KEYS RELEASED');
             console.log('[DEBUG-Keyboard] State before:', previousState, '- After:', this.keyboardState);
         });
-        
+
         // Reset button
         if (this.elements.resetBtn) {
             this.elements.resetBtn.addEventListener('click', () => this.resetFilters());
         }
-        
+
         // Target Date drill controls
         if (this.elements.drillUpBtn) {
             this.elements.drillUpBtn.addEventListener('click', () => this.drillUpTargetDate());
@@ -191,32 +194,44 @@ class QMSCrossFilter {
         if (this.elements.drillDownBtn) {
             this.elements.drillDownBtn.addEventListener('click', () => this.drillDownTargetDate());
         }
-        
+
         // Existing filter UI controls (status buttons, dept filter, etc.)
         document.querySelectorAll('.status-btn').forEach(btn => {
             btn.addEventListener('click', (e) => this.handleStatusFilterClick(e));
         });
-        
-        document.getElementById('deptFilter').addEventListener('change', (e) => {
-            this.handleDepartmentFilterChange(e);
-        });
-        
-        document.getElementById('globalSearch').addEventListener('keyup', (e) => {
-            this.handleGlobalSearch(e);
-        });
+
+        const deptFilterEl = document.getElementById('deptFilter');
+        if (deptFilterEl) {
+            deptFilterEl.addEventListener('change', (e) => {
+                this.handleDepartmentFilterChange(e);
+            });
+        }
+
+        const globalSearchEl = document.getElementById('globalSearch');
+        if (globalSearchEl) {
+            globalSearchEl.addEventListener('keyup', (e) => {
+                this.handleGlobalSearch(e);
+            });
+        }
     }
 
     /**
      * ===== TIMELINE CALCULATION =====
      */
     getDaysDifference(date) {
+        if (!date) return NaN;
+
         const today = new Date();
-        today.setHours(0, 0, 0, 0);  // remove time
+        today.setHours(0, 0, 0, 0);
         const initDate = new Date(date);
+
+        if (isNaN(initDate.getTime())) return NaN;
+
         return Math.floor((today - initDate) / (1000 * 60 * 60 * 24));
     }
 
     getAgeRange(days) {
+        if (typeof days !== 'number' || isNaN(days)) return null;
         if (days > 365) return '1_year_plus';
         if (days > 180) return '6_months_plus';
         if (days > 90) return '3_months_plus';
@@ -231,28 +246,30 @@ class QMSCrossFilter {
     applyFilters() {
         console.log('[DEBUG-Filter] === applyFilters START ===');
         console.log('[DEBUG-Filter] Active filters:', this.activeFilters);
-        
-        // Apply ALL filters to get the base filtered data
+        console.log('[DEBUG-Filter] Search query:', this.searchQuery);
+
         this.filteredData = this.allData.filter(item => {
-            const deptMatch = 
-                this.activeFilters.department.length === 0 || 
+            const deptMatch =
+                this.activeFilters.department.length === 0 ||
                 this.activeFilters.department.includes(item.department);
-            
+
             const statusMatch = this.checkStatusFilter(item);
-            
-            const typeMatch = 
-                this.activeFilters.type.length === 0 || 
+
+            const typeMatch =
+                this.activeFilters.type.length === 0 ||
                 this.activeFilters.type.includes(item.type);
-            
+
             const ageMatch = this.checkAgeFilter(item);
-            
+
             const targetDateMatch = this.checkTargetDateFilter(item);
-            
+
             const involvedDeptMatch = this.checkInvolvedDeptFilter(item);
-            
-            return deptMatch && statusMatch && typeMatch && ageMatch && targetDateMatch && involvedDeptMatch;
+
+            const searchMatch = this.checkSearchFilter(item);
+
+            return deptMatch && statusMatch && typeMatch && ageMatch && targetDateMatch && involvedDeptMatch && searchMatch;
         });
-        
+
         console.log(`[DEBUG-Filter] RESULT: ${this.filteredData.length} records match from ${this.allData.length} total`);
         console.log('[DEBUG-Filter] === applyFilters COMPLETE ===');
     }
@@ -264,78 +281,106 @@ class QMSCrossFilter {
     getFilteredDataWithoutDimension(excludeDimension) {
         return this.allData.filter(item => {
             // Apply all filters EXCEPT the excluded dimension
-            
+
             if (excludeDimension !== 'department') {
-                const deptMatch = 
-                    this.activeFilters.department.length === 0 || 
+                const deptMatch =
+                    this.activeFilters.department.length === 0 ||
                     this.activeFilters.department.includes(item.department);
                 if (!deptMatch) return false;
             }
-            
+
             if (excludeDimension !== 'status') {
                 const statusMatch = this.checkStatusFilter(item);
                 if (!statusMatch) return false;
             }
-            
+
             if (excludeDimension !== 'type') {
-                const typeMatch = 
-                    this.activeFilters.type.length === 0 || 
+                const typeMatch =
+                    this.activeFilters.type.length === 0 ||
                     this.activeFilters.type.includes(item.type);
                 if (!typeMatch) return false;
             }
-            
+
             if (excludeDimension !== 'ageRange') {
                 const ageMatch = this.checkAgeFilter(item);
                 if (!ageMatch) return false;
             }
-            
+
             if (excludeDimension !== 'targetMonth') {
                 const targetDateMatch = this.checkTargetDateFilter(item);
                 if (!targetDateMatch) return false;
             }
-            
+
             if (excludeDimension !== 'involvedDepartment') {
                 const involvedDeptMatch = this.checkInvolvedDeptFilter(item);
                 if (!involvedDeptMatch) return false;
             }
-            
+
+            if (!this.checkSearchFilter(item)) return false;
+
             return true;
         });
     }
 
+    checkSearchFilter(item) {
+        if (!this.searchQuery) return true;
+
+        const searchableText = `
+            ${item.qms_number || ''}
+            ${item.description || ''}
+            ${item.background || ''}
+            ${item.remarks || ''}
+            ${item.department || ''}
+            ${item.status || ''}
+            ${item.type || ''}
+        `.toLowerCase();
+
+        return searchableText.includes(this.searchQuery);
+    }
+
     checkAgeFilter(item) {
         if (this.activeFilters.ageRange.length === 0) return true;
-        
+
         const days = this.getDaysDifference(item.initiated_date);
+        if (isNaN(days)) return false;
+
         const ageRange = this.getAgeRange(days);
-        
+        if (!ageRange) return false;
+
         return this.activeFilters.ageRange.includes(ageRange);
     }
 
     checkStatusFilter(item) {
         if (this.activeFilters.status.length === 0) return true;
-        
+
         // Check each active status filter
         return this.activeFilters.status.some(filterStatus => {
             if (filterStatus === 'Overdue') {
                 // Overdue: target_date < today AND status is Open
+                if (!item.target_date) return false;
+
                 const today = new Date();
-                today.setHours(0, 0, 0, 0);  // remove time
+                today.setHours(0, 0, 0, 0);
+
                 const targetDate = new Date(item.target_date);
+                if (isNaN(targetDate.getTime())) return false;
+
                 return targetDate < today && item.status === 'Open';
             } else if (filterStatus === 'Review') {
                 // Review: review_on is set AND review_on <= today + 7 days
                 if (!item.review_on) return false;
-                
+
                 const today = new Date();
-                today.setHours(0, 0, 0, 0);  // Set to start of today
+                today.setHours(0, 0, 0, 0);
+
                 const reviewDate = new Date(item.review_on);
-                reviewDate.setHours(0, 0, 0, 0);  // Set to start of review date
-                
+                if (isNaN(reviewDate.getTime())) return false;
+
+                reviewDate.setHours(0, 0, 0, 0);
+
                 const sevenDaysFromNow = new Date(today);
                 sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-                
-                // Review date should be <= today + 7 days (i.e., it's soon or overdue)
+
                 return reviewDate <= sevenDaysFromNow;
             } else {
                 // Normal status field comparison
@@ -346,23 +391,25 @@ class QMSCrossFilter {
 
     checkTargetDateFilter(item) {
         if (!this.activeFilters.targetMonth) return true;
-        
+
         if (!item.target_date) return false;
-        
+
         const date = new Date(item.target_date);
+        if (isNaN(date.getTime())) return false;
+
         const monthKey = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
-        
+
         // Support both single selection (string) and multi-selection (array)
         if (Array.isArray(this.activeFilters.targetMonth)) {
             return this.activeFilters.targetMonth.includes(monthKey);
         }
-        
+
         return monthKey === this.activeFilters.targetMonth;
     }
-    
+
     checkInvolvedDeptFilter(item) {
         if (this.activeFilters.involvedDepartment.length === 0) return true;
-        
+
         // Check if any of the involved departments match the filter
         const involvedCodes = item.involved_dept_codes || [];
         return this.activeFilters.involvedDepartment.some(dept => involvedCodes.includes(dept));
@@ -374,7 +421,7 @@ class QMSCrossFilter {
     handleStatusFilterClick(e) {
         const btn = e.target;
         const status = btn.dataset.status;
-        
+
         if (status === 'Overdue') {
             // Overdue filter: show QMS where target_date < today
             if (this.activeFilters.status.length > 0 && this.activeFilters.status[0] === 'Overdue') {
@@ -397,7 +444,7 @@ class QMSCrossFilter {
                 this.activeFilters.status = [status];
             }
         }
-        
+
         this.applyFilters();
         this.updateUI();
     }
@@ -407,13 +454,13 @@ class QMSCrossFilter {
      */
     handleDepartmentFilterChange(e) {
         const dept = e.target.value;
-        
+
         if (dept === '') {
             this.activeFilters.department = [];
         } else {
             this.activeFilters.department = [dept];
         }
-        
+
         this.applyFilters();
         this.updateUI();
     }
@@ -431,7 +478,7 @@ class QMSCrossFilter {
             this.activeFilters.targetMonth = monthKey;
             console.log('[Filter] Target month set to:', monthKey, '(', monthLabel, ')');
         }
-        
+
         this.applyFilters();
         this.updateUI();
     }
@@ -440,24 +487,8 @@ class QMSCrossFilter {
      * Handle global search
      */
     handleGlobalSearch(e) {
-        const query = e.target.value.toLowerCase();
-        
-        if (query === '') {
-            this.applyFilters();
-        } else {
-            // Filter by qms_number, description, background, remarks
-            this.filteredData = this.allData.filter(item => {
-                const searchableText = `
-                    ${item.qms_number}
-                    ${item.description}
-                    ${item.background}
-                    ${item.remarks}
-                `.toLowerCase();
-                
-                return searchableText.includes(query);
-            });
-        }
-        
+        this.searchQuery = (e.target.value || '').trim().toLowerCase();
+        this.applyFilters();
         this.updateUI();
     }
 
@@ -473,25 +504,25 @@ class QMSCrossFilter {
                 console.log('[DEBUG-Render] Rendering all 6 charts...');
                 console.log('[DEBUG-Render] activeFilters.department:', this.activeFilters.department);
                 console.log('[DEBUG-Render] filteredData count:', this.filteredData.length);
-                
+
                 console.log('[DEBUG-Render] Rendering Department chart...');
                 this.renderDepartmentChart();
-                
+
                 console.log('[DEBUG-Render] Rendering Type chart...');
                 this.renderTypeChart();
-                
+
                 console.log('[DEBUG-Render] Rendering Status chart...');
                 this.renderStatusChart();
-                
+
                 console.log('[DEBUG-Render] Rendering Timeline chart...');
                 this.renderTimelineChart();
-                
+
                 console.log('[DEBUG-Render] Rendering Target Date chart...');
                 this.renderTargetDateChart();
-                
+
                 console.log('[DEBUG-Render] Rendering Involved Department chart...');
                 this.renderInvolvedDeptChart();
-                
+
                 console.log('[Chart Render] ✓ All 6 charts rendered successfully');
                 console.log('[DEBUG-Render] === renderCharts COMPLETE ===');
             } catch (error) {
@@ -506,25 +537,25 @@ class QMSCrossFilter {
             console.warn('[Chart] Department chart canvas not found - skipping');
             return;
         }
-        
+
         try {
             console.log('[DEBUG-Chart] === renderDepartmentChart START ===');
             console.log('[Chart] Rendering Department chart...');
             const data = this.aggregateByDepartment();
             console.log('[DEBUG-Chart] aggregated data:', data);
-            
+
             if (this.charts.byDepartment) {
                 this.charts.byDepartment.destroy();
             }
-            
+
             const ctx = this.elements.deptChart.getContext('2d');
             console.log('[DEBUG-Chart] Canvas context:', ctx ? 'OK' : 'NULL');
-            
+
             // Get colors with visual selection feedback (Power BI style)
             console.log('[DEBUG-Chart] activeFilters.department:', this.activeFilters.department);
             const displayColors = this.getColorsWithSelection(data.labels, this.activeFilters.department, 'department');
             console.log('[DEBUG-Chart] displayColors returned:', displayColors);
-            
+
             this.charts.byDepartment = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -548,20 +579,20 @@ class QMSCrossFilter {
                         console.log('[DEBUG-Click] event.native.ctrlKey:', event?.native?.ctrlKey);
                         console.log('[DEBUG-Click] keyboardState:', this.keyboardState);
                         console.log('[DEBUG-Click] elements:', elements);
-                        
+
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const department = data.labels[index];
                             console.log('[DEBUG-Click] Clicked bar index:', index, ', department:', department);
-                            
+
                             // Check shift/ctrl from the NATIVE browser event (Chart.js wraps it in event.native)
                             const isMultiSelect = ((event?.native?.shiftKey || event?.native?.ctrlKey) ||
-                                                  (event && (event.shiftKey || event.ctrlKey))) || 
-                                                 this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
-                            
+                                (event && (event.shiftKey || event.ctrlKey))) ||
+                                this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
+
                             console.log('[DEBUG-Click] isMultiSelect:', isMultiSelect);
                             console.log('[DEBUG-Click] Current activeFilters.department BEFORE:', this.activeFilters.department);
-                            
+
                             if (isMultiSelect) {
                                 // Multi-select toggle (Power BI style)
                                 console.log('[DEBUG-Click] MULTI-SELECT MODE');
@@ -583,7 +614,7 @@ class QMSCrossFilter {
                                     this.activeFilters.department = [department];
                                 }
                             }
-                            
+
                             console.log('[DEBUG-Click] activeFilters.department AFTER:', this.activeFilters.department);
                             console.log('[DEBUG-Click] Calling applyFilters()...');
                             this.applyFilters();
@@ -611,7 +642,7 @@ class QMSCrossFilter {
             });
             console.log('[DEBUG-Chart] Chart object created:', this.charts.byDepartment ? 'EXISTS' : 'NULL');
             console.log('[DEBUG-Chart] Chart canvas element:', this.elements.deptChart);
-            console.log('[DEBUG-Chart] Chart.data.datasets[0].backgroundColor === displayColors?', 
+            console.log('[DEBUG-Chart] Chart.data.datasets[0].backgroundColor === displayColors?',
                 JSON.stringify(this.charts.byDepartment.data.datasets[0].backgroundColor) === JSON.stringify(displayColors));
             console.log('[Chart] ✓ Department chart rendered');
             console.log('[DEBUG-Chart] === renderDepartmentChart END ===');
@@ -626,24 +657,24 @@ class QMSCrossFilter {
             console.warn('[Chart] Type chart canvas not found - skipping');
             return;
         }
-        
+
         try {
             console.log('[Chart] Rendering Type chart...');
             const data = this.aggregateByType();
-            
+
             if (this.charts.byType) {
                 this.charts.byType.destroy();
             }
-            
+
             const ctx = this.elements.typeChart.getContext('2d');
-            
+
             // Get colors with visual selection feedback
             const displayColors = data.labels.map((label, index) => {
                 const isSelected = this.activeFilters.type.length === 0 || this.activeFilters.type.includes(label);
                 const baseColor = data.colors[index];
                 return isSelected ? baseColor : this.fadeColor(baseColor, 0.3);
             });
-            
+
             this.charts.byType = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -664,12 +695,12 @@ class QMSCrossFilter {
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const type = data.labels[index];
-                            
+
                             // Check shift/ctrl from the NATIVE browser event (Chart.js wraps it in event.native)
                             const isMultiSelect = ((event?.native?.shiftKey || event?.native?.ctrlKey) ||
-                                                  (event && (event.shiftKey || event.ctrlKey))) || 
-                                                 this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
-                            
+                                (event && (event.shiftKey || event.ctrlKey))) ||
+                                this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
+
                             if (isMultiSelect) {
                                 if (this.activeFilters.type.includes(type)) {
                                     this.activeFilters.type = this.activeFilters.type.filter(t => t !== type);
@@ -683,7 +714,7 @@ class QMSCrossFilter {
                                     this.activeFilters.type = [type];
                                 }
                             }
-                            
+
                             console.log('[Chart] Type selected:', this.activeFilters.type);
                             this.applyFilters();
                             this.updateUI();
@@ -722,24 +753,24 @@ class QMSCrossFilter {
             console.warn('[Chart] Status chart canvas not found - skipping');
             return;
         }
-        
+
         try {
             console.log('[Chart] Rendering Status chart...');
             const data = this.aggregateByStatus();
-            
+
             if (this.charts.byStatus) {
                 this.charts.byStatus.destroy();
             }
-            
+
             const ctx = this.elements.statusChart.getContext('2d');
-            
+
             // Get colors with visual selection feedback
             const displayColors = data.labels.map((label, index) => {
                 const isSelected = this.activeFilters.status.length === 0 || this.activeFilters.status.includes(label);
                 const baseColor = data.colors[index];
                 return isSelected ? baseColor : this.fadeColor(baseColor, 0.3);
             });
-            
+
             this.charts.byStatus = new Chart(ctx, {
                 type: 'pie',
                 data: {
@@ -757,12 +788,12 @@ class QMSCrossFilter {
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const status = data.labels[index];
-                            
+
                             // Check shift/ctrl from the NATIVE browser event (Chart.js wraps it in event.native)
                             const isMultiSelect = ((event?.native?.shiftKey || event?.native?.ctrlKey) ||
-                                                  (event && (event.shiftKey || event.ctrlKey))) || 
-                                                 this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
-                            
+                                (event && (event.shiftKey || event.ctrlKey))) ||
+                                this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
+
                             if (isMultiSelect) {
                                 if (this.activeFilters.status.includes(status)) {
                                     this.activeFilters.status = this.activeFilters.status.filter(s => s !== status);
@@ -776,7 +807,7 @@ class QMSCrossFilter {
                                     this.activeFilters.status = [status];
                                 }
                             }
-                            
+
                             console.log('[Chart] Status selected:', this.activeFilters.status);
                             this.applyFilters();
                             this.updateUI();
@@ -807,24 +838,24 @@ class QMSCrossFilter {
             console.warn('[Chart] Timeline chart canvas not found - skipping');
             return;
         }
-        
+
         try {
             console.log('[Chart] Rendering Timeline chart...');
             const data = this.aggregateByTimeline();
-            
+
             if (this.charts.byTimeline) {
                 this.charts.byTimeline.destroy();
             }
-            
+
             const ctx = this.elements.timelineChart.getContext('2d');
-            
+
             // Get colors with visual selection feedback
             const displayColors = data.ageRanges.map((ageRange) => {
                 const isSelected = this.activeFilters.ageRange.length === 0 || this.activeFilters.ageRange.includes(ageRange);
                 const baseColor = '#ff7300';
                 return isSelected ? baseColor : this.fadeColor(baseColor, 0.3);
             });
-            
+
             this.charts.byTimeline = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -844,12 +875,12 @@ class QMSCrossFilter {
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const ageRange = data.ageRanges[index];
-                            
+
                             // Check shift/ctrl from the NATIVE browser event (Chart.js wraps it in event.native)
                             const isMultiSelect = ((event?.native?.shiftKey || event?.native?.ctrlKey) ||
-                                                  (event && (event.shiftKey || event.ctrlKey))) || 
-                                                 this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
-                            
+                                (event && (event.shiftKey || event.ctrlKey))) ||
+                                this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
+
                             if (isMultiSelect) {
                                 // Multi-select toggle
                                 if (this.activeFilters.ageRange.includes(ageRange)) {
@@ -865,7 +896,7 @@ class QMSCrossFilter {
                                     this.activeFilters.ageRange = [ageRange];
                                 }
                             }
-                            
+
                             console.log('[Chart] Age range filter:', this.activeFilters.ageRange);
                             this.applyFilters();
                             this.updateUI();
@@ -897,10 +928,10 @@ class QMSCrossFilter {
             console.warn('[Chart] Target Date chart canvas not found - skipping');
             return;
         }
-        
+
         try {
             console.log('[Chart] Rendering Target Date (drill-down) chart...');
-            
+
             // Initialize hierarchy state
             if (!this.chartState) {
                 this.chartState = {
@@ -909,14 +940,14 @@ class QMSCrossFilter {
                     hierarchy: null
                 };
             }
-            
+
             const aggregation = this.aggregateByTargetDate();
             this.chartState.hierarchy = aggregation.hierarchy;
-            
+
             // Determine what to show based on current mode
             let chartLabels, chartValues, chartColors, drillDownData;
             let chartTitle = 'QMS Target Dates by Year';
-            
+
             if (this.chartState.targetDateMode === 'years') {
                 // Show year-level data
                 chartLabels = aggregation.labels;
@@ -931,51 +962,51 @@ class QMSCrossFilter {
                     const bMonth = parseInt(b.key.split('-')[1]);
                     return aMonth - bMonth;
                 });
-                
+
                 chartLabels = monthsArray.map(m => m.label);
                 chartValues = monthsArray.map(m => m.count);
                 chartColors = this.generateColors(monthsArray.length || 1);
                 drillDownData = monthsArray.map(m => m.key);
                 chartTitle = 'Months in ' + this.chartState.selectedYear;
             }
-            
+
             if (!chartLabels || chartLabels.length === 0) {
                 console.warn('[Chart] No data to display in Target Date chart');
                 chartLabels = ['No Data'];
                 chartValues = [0];
                 chartColors = ['#ccc'];
             }
-            
+
             if (this.charts.byTargetDate) {
                 this.charts.byTargetDate.destroy();
                 console.log('[Chart] Previous Target Date chart destroyed');
             }
-            
+
             const ctx = this.elements.targetDateChart.getContext('2d');
             if (!ctx) {
                 console.error('[Chart] Failed to get 2D context from Target Date canvas');
                 return;
             }
-            
+
             // Apply visual selection feedback for Target Date chart
             const displayColors = chartColors.map((color, index) => {
                 // For months view, highlight selected months (support both single and multi-select)
                 if (this.chartState.targetDateMode === 'months' && this.activeFilters.targetMonth) {
                     const monthKey = drillDownData[index];
                     let isSelected = false;
-                    
+
                     if (Array.isArray(this.activeFilters.targetMonth)) {
                         isSelected = this.activeFilters.targetMonth.includes(monthKey);
                     } else {
                         isSelected = monthKey === this.activeFilters.targetMonth;
                     }
-                    
+
                     return isSelected ? color : this.fadeColor(color, 0.3);
                 }
                 // For years view, show all normally (no selection highlighting for drill-down)
                 return color;
             });
-            
+
             this.charts.byTargetDate = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -998,7 +1029,7 @@ class QMSCrossFilter {
                         const isCtrlClick = ((event?.native?.ctrlKey) || (event && event.ctrlKey)) || this.keyboardState.ctrlPressed;
                         // Check if Shift key is pressed for multi-select
                         const isShiftClick = ((event?.native?.shiftKey) || (event && event.shiftKey)) || this.keyboardState.shiftPressed;
-                        
+
                         if (isCtrlClick && this.chartState.targetDateMode === 'months') {
                             // Drill up from months to years (using Ctrl+Click)
                             this.chartState.targetDateMode = 'years';
@@ -1007,11 +1038,11 @@ class QMSCrossFilter {
                             this.renderTargetDateChart();
                             return;
                         }
-                        
+
                         if (elements.length > 0 && drillDownData) {
                             const index = elements[0].index;
                             const drillValue = drillDownData[index];
-                            
+
                             if (this.chartState.targetDateMode === 'years') {
                                 // Drill into selected year
                                 this.chartState.selectedYear = drillValue;
@@ -1022,7 +1053,7 @@ class QMSCrossFilter {
                                 // Multi-select months with Shift+Click or single-select
                                 const monthKey = drillValue;
                                 console.log('[Chart] Month filter - isShiftClick:', isShiftClick, 'monthKey:', monthKey);
-                                
+
                                 if (isShiftClick) {
                                     // Multi-select: toggle month in selection
                                     if (Array.isArray(this.activeFilters.targetMonth) && this.activeFilters.targetMonth.includes(monthKey)) {
@@ -1041,7 +1072,7 @@ class QMSCrossFilter {
                                     this.activeFilters.targetMonth = monthKey;
                                     console.log('[Chart] Single selected month:', monthKey);
                                 }
-                                
+
                                 this.applyFilters();
                                 this.updateUI();
                             }
@@ -1083,7 +1114,7 @@ class QMSCrossFilter {
                 }
             });
             console.log('[Chart] Target Date chart rendered (mode: ' + this.chartState.targetDateMode + ')');
-            
+
             // Update drill button visibility
             this.updateTargetDateDrillButtons();
         } catch (error) {
@@ -1097,84 +1128,84 @@ class QMSCrossFilter {
      */
     aggregateByDepartment() {
         console.log('[DEBUG-Aggregate] === aggregateByDepartment START (Power BI Cross-Filter) ===');
-        
+
         // Get data filtered by ALL OTHER dimensions (excluding department)
         const crossFilteredData = this.getFilteredDataWithoutDimension('department');
         console.log('[DEBUG-Aggregate] Cross-filtered data count:', crossFilteredData.length);
-        
+
         // Get all possible departments from allData
         const allDepts = {};
         this.allData.forEach(item => {
             allDepts[item.department] = 0;  // Initialize with 0
         });
-        
+
         // Count records by department from cross-filtered data
         crossFilteredData.forEach(item => {
             allDepts[item.department] = (allDepts[item.department] || 0) + 1;
         });
-        
+
         console.log('[DEBUG-Aggregate] Department counts:', allDepts);
-        
+
         const labels = Object.keys(allDepts).sort();
         const values = labels.map(k => allDepts[k]);
-        
+
         console.log('[DEBUG-Aggregate] === aggregateByDepartment END ===');
         return { labels, values };
     }
 
     aggregateByType() {
         console.log('[DEBUG-Aggregate] === aggregateByType START (Power BI Cross-Filter) ===');
-        
+
         // Get data filtered by ALL OTHER dimensions (excluding type)
         const crossFilteredData = this.getFilteredDataWithoutDimension('type');
         console.log('[DEBUG-Aggregate] Cross-filtered data count:', crossFilteredData.length);
-        
+
         // Get all possible types from allData
         const allTypes = {};
         this.allData.forEach(item => {
             allTypes[item.type] = 0;  // Initialize with 0
         });
-        
+
         // Count records by type from cross-filtered data
         crossFilteredData.forEach(item => {
             allTypes[item.type] = (allTypes[item.type] || 0) + 1;
         });
-        
+
         console.log('[DEBUG-Aggregate] Type counts:', allTypes);
-        
+
         const labels = Object.keys(allTypes).sort();
         const values = labels.map(k => allTypes[k]);
         const colors = this.generateColors(labels.length);
-        
+
         console.log('[DEBUG-Aggregate] === aggregateByType END ===');
         return { labels, values, colors };
     }
 
     aggregateByStatus() {
         console.log('[DEBUG-Aggregate] === aggregateByStatus START (Power BI Cross-Filter) ===');
-        
+
         // Get data filtered by ALL OTHER dimensions (excluding status)
         const crossFilteredData = this.getFilteredDataWithoutDimension('status');
         console.log('[DEBUG-Aggregate] Cross-filtered data count:', crossFilteredData.length);
-        
+
         // Get all possible statuses from allData
         const allStatuses = {};
         this.allData.forEach(item => {
             allStatuses[item.status] = 0;  // Initialize with 0
         });
-        
+
         // Count records by status from cross-filtered data
         crossFilteredData.forEach(item => {
             allStatuses[item.status] = (allStatuses[item.status] || 0) + 1;
         });
-        
+
         console.log('[DEBUG-Aggregate] Status counts:', allStatuses);
-        
+
         const labels = Object.keys(allStatuses).sort();
         const values = labels.map(k => allStatuses[k]);
         const colorMap = { 'Open': '#0d6efd', 'CFT': '#20c997', 'EM': '#6610f2', 'Closed': '#6c757d' };
         const colors = labels.map(l => colorMap[l] || '#999');
-        
+
         console.log('[DEBUG-Aggregate] === aggregateByStatus END ===');
         return { labels, values, colors };
     }
@@ -1200,7 +1231,7 @@ class QMSCrossFilter {
             const days = this.getDaysDifference(item.initiated_date);
             const bucket = this.getAgeRange(days);
 
-            if (buckets.hasOwnProperty(bucket)) {
+            if (bucket && buckets.hasOwnProperty(bucket)) {
                 buckets[bucket]++;
             }
         });
@@ -1232,67 +1263,67 @@ class QMSCrossFilter {
     aggregateByTargetDateHierarchy() {
         const yearMap = {};
         let itemsWithTargetDate = 0;
-        
+
         console.log('[Chart] Aggregating target dates by year and month (Power BI Cross-Filter)...');
-        
+
         // Get data filtered by ALL OTHER dimensions (excluding targetMonth)
         const crossFilteredData = this.getFilteredDataWithoutDimension('targetMonth');
         console.log('[Chart] Cross-filtered data count for target dates:', crossFilteredData.length);
-        
+
         // Count records by target date from cross-filtered data
         crossFilteredData.forEach(item => {
             if (!item.target_date) return;
-            
-            itemsWithTargetDate++;
+
             const date = new Date(item.target_date);
-            
             if (isNaN(date.getTime())) {
                 console.warn('[Chart] Invalid date for item', item.id, ':', item.target_date);
                 return;
             }
-            
+
+            itemsWithTargetDate++;
+
             const year = date.getFullYear();
             const monthKey = year + '-' + String(date.getMonth() + 1).padStart(2, '0');
             const monthLabel = date.toLocaleDateString('en-US', { month: 'short' });  // 'Jan', 'Feb', etc.
-            
+
             if (!yearMap[year]) {
                 yearMap[year] = { label: year.toString(), count: 0, months: {} };
             }
-            
+
             yearMap[year].count++;
-            
+
             if (!yearMap[year].months[monthKey]) {
                 yearMap[year].months[monthKey] = { label: monthLabel, count: 0, key: monthKey };
             }
             yearMap[year].months[monthKey].count++;
         });
-        
+
         // Sort years
         const sortedYears = Object.keys(yearMap).sort().reverse();  // Newest first
-        
+
         console.log('[Chart] ✓ Hierarchical aggregation complete:');
         console.log('  - Total all records:', this.allData.length);
         console.log('  - Records with target_date:', itemsWithTargetDate);
         console.log('  - Years found:', sortedYears.length);
-        
+
         return {
             years: sortedYears,
             data: yearMap,
             totalCount: itemsWithTargetDate
         };
     }
-    
+
     aggregateByTargetDate() {
         // For backward compatibility, delegate to hierarchy
         const hierarchy = this.aggregateByTargetDateHierarchy();
-        
+
         // Return year-level data for initial view
         const yearData = hierarchy.years.map(year => ({
             label: year,
             count: hierarchy.data[year].count,
             key: year
         }));
-        
+
         return {
             labels: yearData.map(y => y.label),
             values: yearData.map(y => y.count),
@@ -1309,9 +1340,9 @@ class QMSCrossFilter {
         if (this.activeFilters.department.includes(dept)) {
             this.activeFilters.department = this.activeFilters.department.filter(d => d !== dept);
         } else {
-            this.activeFilters.department = [dept]; // Single selection
+            this.activeFilters.department = [dept];
         }
-        
+
         this.applyFilters();
         this.updateUI();
     }
@@ -1322,7 +1353,7 @@ class QMSCrossFilter {
         } else {
             this.activeFilters.type.push(type);
         }
-        
+
         this.applyFilters();
         this.updateUI();
     }
@@ -1331,9 +1362,9 @@ class QMSCrossFilter {
         if (this.activeFilters.status.includes(status)) {
             this.activeFilters.status = this.activeFilters.status.filter(s => s !== status);
         } else {
-            this.activeFilters.status = [status]; // Single selection
+            this.activeFilters.status = [status];
         }
-        
+
         this.applyFilters();
         this.updateUI();
     }
@@ -1344,7 +1375,7 @@ class QMSCrossFilter {
         } else {
             this.activeFilters.ageRange.push(ageRange);
         }
-        
+
         this.applyFilters();
         this.updateUI();
     }
@@ -1384,17 +1415,25 @@ class QMSCrossFilter {
             targetMonth: null,
             involvedDepartment: []
         };
+
+        this.searchQuery = '';
+
         // Also reset target date drill state
         if (this.chartState) {
             this.chartState.targetDateMode = 'years';
             this.chartState.selectedYear = null;
         }
+
         this.applyFilters();
         this.updateUI();
-        
+
         // Reset form inputs
-        document.getElementById('globalSearch').value = '';
-        document.getElementById('deptFilter').value = '';
+        const searchEl = document.getElementById('globalSearch');
+        if (searchEl) searchEl.value = '';
+
+        const deptEl = document.getElementById('deptFilter');
+        if (deptEl) deptEl.value = '';
+
         console.log('[QMS Cross-Filter] All filters reset');
     }
 
@@ -1430,13 +1469,11 @@ class QMSCrossFilter {
      */
     updateTargetDateDrillButtons() {
         if (!this.elements.drillUpBtn || !this.elements.drillDownBtn) return;
-        
+
         if (this.chartState && this.chartState.targetDateMode === 'months') {
-            // In months view: show drill-up button
             this.elements.drillUpBtn.style.display = 'inline-block';
             this.elements.drillDownBtn.style.display = 'none';
         } else {
-            // In years view: show drill-down button
             this.elements.drillUpBtn.style.display = 'none';
             this.elements.drillDownBtn.style.display = 'inline-block';
         }
@@ -1450,21 +1487,21 @@ class QMSCrossFilter {
         console.log('[Table] updateTableFromFilters() called - retryCount:', retryCount);
         console.log('[Table] Filtered data available:', this.filteredData.length, 'records');
         console.log('[Table] Filtered data sample:', this.filteredData.slice(0, 2));
-        
+
         if (!this.elements.table) {
             console.warn('[Table] ❌ Table element not found (#qmsTable)');
             return;
         }
-        
+
         console.log('[Table] ✓ Table element found');
-        
+
         try {
-            const isDataTable = jQuery.fn.dataTable.isDataTable(this.elements.table);
+            const isDataTable = !!(window.jQuery && jQuery.fn && jQuery.fn.dataTable && jQuery.fn.dataTable.isDataTable(this.elements.table));
             console.log('[Table] jQuery.fn.dataTable.isDataTable() returned:', isDataTable);
-            
+
             const table = isDataTable ? $(this.elements.table).DataTable() : null;
             console.log('[Table] Table instance obtained:', table ? '✓ Yes' : '❌ No');
-            
+
             if (!table) {
                 // Retry up to 10 times with longer delays if DataTable not ready yet
                 if (retryCount < 10) {
@@ -1478,19 +1515,21 @@ class QMSCrossFilter {
                     return;
                 }
             }
-            
+
             console.log('[Table] ✓ DataTable initialized, clearing existing rows...');
-            
-            // Clear existing rows
             table.clear();
             console.log('[Table] ✓ Table cleared');
-            
-            // Add filtered data rows
-            console.log('[Table] Adding', this.filteredData.length, 'rows to table...');
+
+            // Apply review blank toggle after normal filtering
+            const rowsToShow = this.reviewBlankOnly
+                ? this.filteredData.filter(item => !item.review_on || String(item.review_on).trim() === '')
+                : this.filteredData;
+
+            console.log('[Table] Adding', rowsToShow.length, 'rows to table...');
             let rowsAdded = 0;
             let rowsErrored = 0;
-            
-            this.filteredData.forEach((item, index) => {
+
+            rowsToShow.forEach((item) => {
                 try {
                     if (!item.qms_number) {
                         console.warn('[Table] ⚠️ Skipping row without qms_number');
@@ -1505,22 +1544,22 @@ class QMSCrossFilter {
                     rowsErrored++;
                 }
             });
-            
+
             console.log('[Table] ✓ Added', rowsAdded, 'rows successfully, errored:', rowsErrored);
-            
-            // Draw table
+
             table.draw();
             console.log('[Table] ✓ Table redrawn');
             console.log('[Table] ✓ Table update complete - showing', rowsAdded, 'records');
-            
-            // Rebind handlers after draw
+
             this.bindTableHandlers();
         } catch (error) {
             console.error('[Table] ❌ Error updating table:', error);
             console.error('[Table] Stack:', error.stack);
         }
+
+        this.createReviewOnToggleButton();
     }
-    
+
     bindTableHandlers() {
         // This will be called from template's bindAjaxSaveHandlers
         console.log('[Table] Handlers rebinding after data update');
@@ -1529,35 +1568,45 @@ class QMSCrossFilter {
     createTableRow(item) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);  // remove time
-        const targetDate = new Date(item.target_date);
-        const isOverdue = targetDate < today && item.status === 'Open';
+
+        let targetDate = null;
+        if (item.target_date) {
+            const parsedTarget = new Date(item.target_date);
+            if (!isNaN(parsedTarget.getTime())) {
+                targetDate = parsedTarget;
+            }
+        }
+
+        const isOverdue = targetDate ? (targetDate < today && item.status === 'Open') : false;
         const overdueClass = isOverdue ? 'overdue-text' : '';
-        
+
         // Format review_on date for input field (YYYY-MM-DD)
         let reviewDateValue = '';
         let hasReviewDate = false;
         if (item.review_on) {
             const reviewDate = new Date(item.review_on);
-            reviewDateValue = reviewDate.toISOString().split('T')[0];
-            hasReviewDate = true;
+            if (!isNaN(reviewDate.getTime())) {
+                reviewDateValue = reviewDate.toISOString().split('T')[0];
+                hasReviewDate = true;
+            }
         }
-        
+
         // Get the detail URL from config if available
         const detailUrl = (typeof window.QMS_CONFIG !== 'undefined' && window.QMS_CONFIG.detailUrl)
             ? window.QMS_CONFIG.detailUrl(item.id)
             : `/qms/${item.id}/`;
-        
+
         console.log('[Table] Row', item.id, 'review_on:', item.review_on, '-> formatted:', reviewDateValue);
-        
+
         return [
-            `<div class="cell-padding"><a href="${detailUrl}">${item.qms_number}</a></div>`,
-            `<div class="cell-padding">${item.description}</div>`,
-            `<div class="cell-padding">${item.background}</div>`,
+            `<div class="cell-padding"><a href="${detailUrl}">${item.qms_number || ''}</a></div>`,
+            `<div class="cell-padding">${item.description || ''}</div>`,
+            `<div class="cell-padding">${item.background || ''}</div>`,
             `<div class="remarks-container"><textarea class="remarks-area ajax-save" data-field="remarks" data-id="${item.id}">${item.remarks || ''}</textarea></div>`,
-            `<div class="cell-padding"><span class="date-val ${overdueClass}" data-date="${item.target_date}">${new Date(item.target_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' }).toUpperCase()}</span></div>`,
+            `<div class="cell-padding"><span class="date-val ${overdueClass}" data-date="${item.target_date || ''}">${item.target_date && targetDate ? targetDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' }).toUpperCase() : ''}</span></div>`,
             `<div class="cell-padding"><input type="date" class="form-control form-control-sm border-0 ajax-save" data-field="review_on" data-id="${item.id}" value="${reviewDateValue}" placeholder="Select date"></div>`,
-            item.department,
-            item.status,
+            item.department || '',
+            item.status || '',
             item.status === 'Open' ? 1 : 3,
             hasReviewDate ? 'REVIEW' : 'NO'
         ];
@@ -1565,13 +1614,13 @@ class QMSCrossFilter {
 
     aggregateByInvolvedDepartment() {
         const deptMap = {};
-        
+
         console.log('[Chart] Aggregating by involved departments (Power BI Cross-Filter)...');
-        
+
         // Get data filtered by ALL OTHER dimensions (excluding involvedDepartment)
         const crossFilteredData = this.getFilteredDataWithoutDimension('involvedDepartment');
         console.log('[Chart] Cross-filtered data count for involved depts:', crossFilteredData.length);
-        
+
         crossFilteredData.forEach(item => {
             const depts = item.involved_dept_codes || [];
             depts.forEach(dept => {
@@ -1581,11 +1630,11 @@ class QMSCrossFilter {
                 deptMap[dept].count++;
             });
         });
-        
+
         const sorted = Object.values(deptMap).sort((a, b) => b.count - a.count);
-        
+
         console.log('[Chart] Aggregated by involved departments:', sorted.map(d => `${d.code}: ${d.count}`).join(', '));
-        
+
         return {
             labels: sorted.map(d => d.code),
             values: sorted.map(d => d.count),
@@ -1599,25 +1648,24 @@ class QMSCrossFilter {
             console.warn('[Chart] Involved Dept chart canvas not found - skipping');
             return;
         }
-        
+
         try {
             console.log('[Chart] Rendering Involved Departments chart...');
             const data = this.aggregateByInvolvedDepartment();
-            
+
             if (this.charts.byInvolvedDept) {
                 this.charts.byInvolvedDept.destroy();
             }
-            
+
             const ctx = this.elements.involvedDeptChart.getContext('2d');
-            const self = this;
-            
+
             // Get colors with visual selection feedback
             const displayColors = data.labels.map((label, index) => {
                 const isSelected = this.activeFilters.involvedDepartment.length === 0 || this.activeFilters.involvedDepartment.includes(data.keys[index]);
                 const baseColor = data.colors[index];
                 return isSelected ? baseColor : this.fadeColor(baseColor, 0.3);
             });
-            
+
             this.charts.byInvolvedDept = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -1638,12 +1686,12 @@ class QMSCrossFilter {
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const dept = data.keys[index];
-                            
+
                             // Check shift/ctrl from the NATIVE browser event (Chart.js wraps it in event.native)
                             const isMultiSelect = ((event?.native?.shiftKey || event?.native?.ctrlKey) ||
-                                                  (event && (event.shiftKey || event.ctrlKey))) || 
-                                                 this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
-                            
+                                (event && (event.shiftKey || event.ctrlKey))) ||
+                                this.keyboardState.shiftPressed || this.keyboardState.ctrlPressed;
+
                             if (isMultiSelect) {
                                 if (this.activeFilters.involvedDepartment.includes(dept)) {
                                     this.activeFilters.involvedDepartment = this.activeFilters.involvedDepartment.filter(d => d !== dept);
@@ -1657,7 +1705,7 @@ class QMSCrossFilter {
                                     this.activeFilters.involvedDepartment = [dept];
                                 }
                             }
-                            
+
                             console.log('[Chart] Involved dept:', this.activeFilters.involvedDepartment);
                             this.applyFilters();
                             this.updateUI();
@@ -1702,7 +1750,7 @@ class QMSCrossFilter {
             'AD': '#27ae60', 'IP': '#2980b9', 'MK': '#e67e22',
             'PP': '#34495e'
         };
-        
+
         return labels.map(label => {
             if (filterType === 'department') {
                 return colorMap[label] || '#999';
@@ -1710,7 +1758,7 @@ class QMSCrossFilter {
             return '#0d6efd';
         });
     }
-    
+
     /**
      * Get colors with visual feedback (highlight selected, fade unselected)
      * This implements Power BI-style visual filtering
@@ -1721,23 +1769,23 @@ class QMSCrossFilter {
             console.log('[DEBUG-Selection] filterType:', filterType);
             console.log('[DEBUG-Selection] labels:', labels);
             console.log('[DEBUG-Selection] activeSelections:', activeSelections);
-            
+
             const baseColors = this.getBackgroundColors(labels, filterType);
             console.log('[DEBUG-Selection] baseColors:', baseColors);
-            
+
             // If nothing is selected, show all colors normally
             if (activeSelections.length === 0) {
                 console.log('[DEBUG-Selection] No active selections - returning base colors');
                 return baseColors;
             }
-            
+
             // Otherwise, highlight selected and fade unselected
             const displayColors = baseColors.map((color, index) => {
                 const label = labels[index];
                 const isSelected = activeSelections.includes(label);
-                
+
                 console.log('[DEBUG-Selection] Index', index, '- Label:', label, '- isSelected:', isSelected, '- baseColor:', color);
-                
+
                 if (isSelected) {
                     console.log('[DEBUG-Selection] ✓ SELECTED:', label, '- returning full color');
                     return color;
@@ -1747,7 +1795,7 @@ class QMSCrossFilter {
                     return faded;
                 }
             });
-            
+
             console.log('[DEBUG-Selection] Final displayColors:', displayColors);
             return displayColors;
         } catch (error) {
@@ -1756,7 +1804,7 @@ class QMSCrossFilter {
             return this.getBackgroundColors(labels, filterType);
         }
     }
-    
+
     /**
      * Fade a color by reducing opacity
      */
@@ -1773,7 +1821,7 @@ class QMSCrossFilter {
             return 'rgba(0, 0, 0, 0.3)';
         }
     }
-    
+
     /**
      * Convert hex color to RGB
      */
@@ -1808,7 +1856,7 @@ class QMSCrossFilter {
             '#0d6efd', '#6610f2', '#20c997', '#fd7e14', '#e83e8c',
             '#17a2b8', '#ffc107', '#28a745', '#6f42c1', '#e74c3c'
         ];
-        
+
         const result = [];
         for (let i = 0; i < count; i++) {
             result.push(colors[i % colors.length]);
@@ -1817,29 +1865,87 @@ class QMSCrossFilter {
     }
 
     darkenColor(color) {
-        const hex = color.replace('#', '');
-        const r = Math.max(0, parseInt(hex.substr(0, 2), 16) - 30);
-        const g = Math.max(0, parseInt(hex.substr(2, 2), 16) - 30);
-        const b = Math.max(0, parseInt(hex.substr(4, 2), 16) - 30);
+        const hex = String(color || '#000000').replace('#', '');
+        const safeHex = hex.length === 6 ? hex : '000000';
+        const r = Math.max(0, parseInt(safeHex.substr(0, 2), 16) - 30);
+        const g = Math.max(0, parseInt(safeHex.substr(2, 2), 16) - 30);
+        const b = Math.max(0, parseInt(safeHex.substr(4, 2), 16) - 30);
         return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    createReviewOnToggleButton() {
+        const table = document.getElementById('qmsTable');
+        if (!table || !table.tHead || !table.tHead.rows.length) return;
+
+        const headerRow = table.tHead.rows[0];
+        const cells = headerRow.cells;
+
+        let reviewCell = null;
+
+        for (let i = 0; i < cells.length; i++) {
+            const text = (cells[i].textContent || cells[i].innerText || '').trim().toLowerCase();
+            if (text.includes('review')) {
+                reviewCell = cells[i];
+                break;
+            }
+        }
+
+        if (!reviewCell) {
+            console.warn('[Review Toggle] Review header not found');
+            return;
+        }
+
+        if (this.reviewToggleBtn && document.contains(this.reviewToggleBtn)) return;
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-sm btn-outline-primary';
+        btn.textContent = 'Blank Only: OFF';
+        btn.style.marginTop = '4px';
+        btn.style.fontSize = '11px';
+        btn.style.padding = '2px 8px';
+        btn.style.display = 'block';
+
+        btn.addEventListener('click', () => {
+            this.reviewBlankOnly = !this.reviewBlankOnly;
+            btn.textContent = this.reviewBlankOnly ? 'Blank Only: ON' : 'Blank Only: OFF';
+            this.updateTableFromFilters();
+        });
+
+        const wrapper = document.createElement('div');
+        wrapper.style.display = 'flex';
+        wrapper.style.flexDirection = 'column';
+        wrapper.style.alignItems = 'center';
+        wrapper.style.gap = '4px';
+
+        const title = document.createElement('div');
+        title.textContent = reviewCell.textContent.trim();
+        title.style.fontWeight = '600';
+
+        reviewCell.textContent = '';
+        wrapper.appendChild(title);
+        wrapper.appendChild(btn);
+        reviewCell.appendChild(wrapper);
+
+        this.reviewToggleBtn = btn;
     }
 }
 
 // ===== INITIALIZE ON DOM READY =====
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('[Init] DOMContentLoaded - creating QMSCrossFilter instance');
-    
+
     // Use config API URL or fallback
-    const apiUrl = (typeof window.QMS_CONFIG !== 'undefined' && window.QMS_CONFIG.apiUrl) 
-        ? window.QMS_CONFIG.apiUrl 
+    const apiUrl = (typeof window.QMS_CONFIG !== 'undefined' && window.QMS_CONFIG.apiUrl)
+        ? window.QMS_CONFIG.apiUrl
         : '/api/qms/';
-    
+
     console.log('[Init] Using API URL:', apiUrl);
-    
+
     window.qmsFilter = new QMSCrossFilter({
         apiUrl: apiUrl
     });
-    
+
     console.log('[Init] Calling init()...');
     await window.qmsFilter.init();
     console.log('[Init] ✓ QMS Filter ready - window.qmsFilter is available');
